@@ -1,0 +1,10 @@
+__pycache__/
+.venv/
+.verify_bib_cache.json
+*.verified.bib
+*.report.md
+*.decisions.md
+*.bak
+*.bak[0-9]*
+tests/e2e/runs/
+bib-check-agent.zip

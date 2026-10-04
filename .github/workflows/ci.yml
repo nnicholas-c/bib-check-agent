@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r skills/bib-check-agent/scripts/requirements.txt
+      - run: python tests/test_verify_bib.py
+      - run: python tests/test_skill_files.py
+      - run: node tests/test_investigate.mjs
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Agent Skills spec (skills-ref, installed from the official repo)
+        run: |
+          pip install "git+https://github.com/agentskills/agentskills.git#subdirectory=skills-ref"
+          skills-ref validate skills/bib-check-agent
+      - name: Claude Code plugin and marketplace
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate --strict .
+          claude plugin validate --strict .claude-plugin/plugin.json
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip the skill folder for claude.ai and other upload-based apps
+        run: cd skills && zip -r ../bib-check-agent.zip bib-check-agent -x '*/__pycache__/*' '*/.venv/*'
+      - run: gh release create "$GITHUB_REF_NAME" bib-check-agent.zip --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

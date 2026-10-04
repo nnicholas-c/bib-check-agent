@@ -1,0 +1,20 @@
+\documentclass{article}
+\usepackage{natbib}
+\usepackage{url}
+\begin{document}
+\section{Introduction}
+Transformers rely entirely on attention mechanisms and dispense with recurrence \citep{vaswani2017attention}.
+Residual connections make it possible to train networks with more than a hundred layers \citep{he2016resnet}.
+We train all models with the Adam optimizer \citep{kingma2014adam}.
+Bidirectional pre-training of deep transformers improves many language understanding tasks \citep{devlin2019bert}.
+Gradient folding reduces activation memory by 40\% during training \citep{chen2023gradfold}.
+Randomly dropping units during training prevents co-adaptation of feature detectors and reduces overfitting \citep{smith2014dropout}.
+The transformer architecture has since become the default for sequence modelling \citep{vaswani2017transformer, devlin2019bert}.
+Fully convolutional networks produce dense pixel-wise predictions for semantic segmentation \citep{hochreiter1997lstm}.
+Our implementation uses PyTorch \citep{pytorch}.
+A standard textbook treatment of these methods is given by \citet{goodfellow2016deep}.
+Large language models can perform tasks zero-shot without task-specific training \citep{radford2019gpt2}.
+\input{sections/related}
+\bibliographystyle{plainnat}
+\bibliography{refs}
+\end{document}

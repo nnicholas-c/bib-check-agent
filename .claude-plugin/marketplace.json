@@ -1,0 +1,14 @@
+{
+  "name": "bib-check-agent",
+  "owner": { "name": "nnicholas-c" },
+  "description": "Bib Check Agent: find and fix hallucinated, wrong or unsupported citations in LaTeX bibliographies.",
+  "plugins": [
+    {
+      "name": "bib-check-agent",
+      "source": "./",
+      "description": "Find and fix hallucinated, wrong or unsupported citations in LaTeX .bib files, with every fix independently re-checked.",
+      "category": "productivity",
+      "keywords": ["bibtex", "latex", "citations", "references", "research"]
+    }
+  ]
+}

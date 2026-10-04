@@ -1,0 +1,2 @@
+# The 19-entry test paper deliberately uses CRLF line endings; keep its bytes exact on every checkout.
+tests/e2e/fixture/refs.bib -text
