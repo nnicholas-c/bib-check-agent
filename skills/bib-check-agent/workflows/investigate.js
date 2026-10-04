@@ -48,6 +48,7 @@ const CITES = `To find where a key is cited, Grep the .tex files for the key, th
 
 const EVIDENCE = `Evidence rules. Follow them exactly; they are why anyone can trust the result.
 - A source counts as real only if you opened a page that shows it: a DOI landing page, publisher page, arXiv abstract page, OpenReview, ACL Anthology, Semantic Scholar, Google Scholar, a library catalog, or an author's page. A search-result snippet alone is not enough. dblp.org pages currently show a bot check; for structured lookups use the Semantic Scholar API (https://api.semanticscholar.org/graph/v1/paper/search?query=...&fields=title,authors,year,venue,externalIds,abstract) or Crossref (https://api.crossref.org/works?query.bibliographic=...). Semantic Scholar rate-limits; on HTTP 429 wait a few seconds and retry, or use another source.
+- Confirm every real source in at least two independent places before relying on it: for example the publisher or DOI page plus DBLP, Semantic Scholar, OpenAlex or Google Scholar. Check that the title, authors, year and venue agree between them. If they disagree, settle it from the publisher's own page and say so in the reason. Google Scholar counts when you can open it; it often blocks automated access, and you must never try to get around a CAPTCHA. The checker's --search shows several databases' records side by side, which makes this quick.
 - Take BibTeX only from a source you opened, never from memory. A reference reconstructed from memory is exactly the error this check exists to catch. Get it with the checker, using the Bash tool; it prints the official export, cleaned and under the key you give:
     ${A.checker} --bibtex <DOI, arXiv ID, or URL of a .bib export> --key <citation key>
   It accepts any DOI, any arXiv ID, and .bib export URLs such as https://aclanthology.org/N19-1423.bib. When no export exists (books, theses, reports, web pages), write the entry from the fields shown on the page you opened, and say so in bibtex_source.
@@ -69,7 +70,7 @@ const DECISION = {
     key: str('The citation key, unchanged.'),
     decision: { type: 'string', enum: ['FIXED', 'FOUND', 'KEPT', 'SUBSTITUTED', 'FABRICATED', 'UNRESOLVED'] },
     reason: str('One sentence a researcher could check.'),
-    evidence_urls: strs('Pages you opened that show the source. Empty only for FABRICATED.'),
+    evidence_urls: strs('Pages you opened that show the source: at least two independent ones that agree. Empty only for FABRICATED and UNRESOLVED.'),
     bibtex: str('The complete replacement entry under the original key for FIXED, FOUND and SUBSTITUTED. Empty string for KEPT and FABRICATED.'),
     bibtex_source: str('The checker command or URL the BibTeX came from, or "written from <url>". Empty when bibtex is empty.'),
     citing_sentences: strs('Every sentence in the .tex files that cites this key.'),
@@ -177,6 +178,7 @@ const CHECKS = {
 function verifyPrompt(d) {
   const fields = d.decision === 'KEPT' ? '' : `- Compare every field of the proposed BibTeX with the source page: title, each author's name, spelling and order, year, venue, volume, number, pages, publisher and DOI. The entry type fits the source (inproceedings, article, book, phdthesis, techreport, or misc for a preprint or web page), and it cites the published version if one exists.
 - The key in the BibTeX is exactly "${d.key}".
+- A second independent source, different from where the BibTeX came from (bibtex_source), agrees with it on title, authors, year and venue. Open it yourself.
 `
   return `An investigator reached the decision below about one entry of a LaTeX bibliography. You are an independent reviewer: try to refute it. Open the evidence yourself and look for anything wrong.
 

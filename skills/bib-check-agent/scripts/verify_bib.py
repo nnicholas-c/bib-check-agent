@@ -68,6 +68,7 @@ except ImportError:
 
 S2_KEY = os.environ.get("S2_API_KEY")
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY")
+OPENALEX_KEY = os.environ.get("OPENALEX_API_KEY")
 
 TITLE_OK = 95     # title similarity (0 to 100) needed to call a title correct
 TITLE_CLOSE = 80  # below this, a search result is treated as a different paper
@@ -120,7 +121,7 @@ VENUES = [
 MONTHS = {m[:3].lower(): m for m in ("January February March April May June July August September "
                                       "October November December").split()}
 # When two records match equally well, show the more carefully curated one.
-SOURCE_RANK = {"DBLP": 3, "Crossref": 2, "Semantic Scholar": 1, "arXiv": 1, "Google Scholar": 0}
+SOURCE_RANK = {"DBLP": 3, "Crossref": 2, "Semantic Scholar": 1, "OpenAlex": 1, "arXiv": 1, "Google Scholar": 0}
 WEB_TYPES = {"misc", "online", "software", "manual", "electronic", "www", "webpage", "dataset"}
 
 STOPWORDS = set("a an the of for and in on to with by from at as is are be via using towards "
@@ -147,6 +148,7 @@ class Http:
                 self.cache = {}
         self.dirty = 0
         self.next_time = defaultdict(float)
+        self.down = {}  # host -> why we stopped calling it for the rest of this run
         if email:
             MIN_INTERVAL["api.crossref.org"] = 0.4
         atexit.register(self.save)
@@ -168,13 +170,17 @@ class Http:
             retry_429=True, cache=True):
         """Return (status, text). Status 0 means the request never got an answer."""
         params = dict(params or {})
-        if self.email and "api.crossref.org" in url:
+        if self.email and ("api.crossref.org" in url or "api.openalex.org" in url):
             params["mailto"] = self.email
+        if OPENALEX_KEY and "api.openalex.org" in url:
+            params["api_key"] = OPENALEX_KEY
         visible = {k: v for k, v in params.items() if k not in ("api_key", "mailto")}
         key = json.dumps([method, url, sorted(visible.items()), data], default=str)
         if cache and self.use_cache and key in self.cache:
             return tuple(self.cache[key])
         host = urlparse(url).netloc
+        if host in self.down:
+            return 429, ""
         status, text = 0, ""
         for attempt in range(tries):
             self._wait(host)
@@ -189,6 +195,12 @@ class Http:
                     retry_after = 0.0
             except requests.RequestException as e:
                 status, text = 0, str(e)
+            if status == 429 and retry_after > 120:
+                # The host asks us to stay away for minutes or hours (for example a used-up daily quota).
+                # Waiting would stall the whole run, so stop calling it and say so in the report.
+                self.down[host] = f"it asked us to wait {retry_after / 3600:.1f} hours (rate limit or used-up quota)"
+                print(f"  {host} is refusing requests ({self.down[host]}); continuing without it.", flush=True)
+                break
             if status == 429 and not retry_429:
                 break
             if status in (0, 429, 500, 502, 503, 504) and attempt < tries - 1:
@@ -321,7 +333,9 @@ def surname_keys(name):
     if not name or name in ("...", "\u2026"):
         return set()
     if name.startswith("{") and name.endswith("}") and name.count("{") == 1:
-        return {_key(name)}  # corporate author such as {OpenAI}
+        toks = clean_latex(name).split()
+        return {k for k in (_key(name), _key(toks[-1]) if toks else "") if k}  # corporate author such as {OpenAI},
+        # with its last word too, which is how a database that doesn't brace the name parses it
     if "," in name:
         last = clean_latex(name.split(",")[0])
         toks = last.split()
@@ -419,6 +433,7 @@ class Ref:
     decision: str = ""         # auto, accept, paste, keep, fake, skip
     pasted: tuple = None
     scholar_checked: bool = False
+    confirmed_by: list = field(default_factory=list)  # databases whose record matches the entry
 
 
 ARXIV_NEW = r"(\d{4}\.\d{4,5})(?:v\d+)?"
@@ -569,7 +584,10 @@ def crossref_cand(it):
             year = parts[0][0]
             break
     doi = it.get("DOI")
-    return Cand("Crossref", strip_tags(" ".join(it.get("title") or [])), authors, year,
+    title = " ".join(it.get("title") or [])
+    if it.get("subtitle"):  # Crossref keeps subtitles apart ("XGBoost" + "A Scalable Tree Boosting System")
+        title += ": " + " ".join(it["subtitle"])
+    return Cand("Crossref", strip_tags(title), authors, year,
                 strip_tags(" ".join(it.get("container-title") or [])), doi, None, None,
                 f"https://doi.org/{doi}" if doi else None, preprint=(it.get("type") == "posted-content"))
 
@@ -587,7 +605,7 @@ def crossref_search(http, title, first_author):
     q = title + (" " + first_author if first_author else "")
     st, j = http.json("https://api.crossref.org/works",
                       params={"query.bibliographic": q[:400], "rows": 5,
-                              "select": "DOI,title,author,issued,published-print,published-online,container-title,type"})
+                              "select": "DOI,title,subtitle,author,issued,published-print,published-online,container-title,type"})
     if st != 200 or not j:
         return []
     return [crossref_cand(it) for it in (j.get("message") or {}).get("items", [])]
@@ -847,6 +865,12 @@ def search_papers(http, query, n=5):
                               f"https://arxiv.org/abs/{aid}", " ".join(e.findtext("a:summary", "", ns).split())))
         except ET.ParseError:
             pass
+    if SERPAPI_KEY:  # Google Scholar has no official API; SerpApi is the reliable way to query it
+        try:
+            for c in scholar_search(http, query):
+                found.append(("Google Scholar", c.title, c.authors, c.year, c.venue, None, None, c.url, None))
+        except ScholarOff as e:
+            found.append(("Google Scholar", f"(no answer: {e})", [], None, "", None, None, None, None))
     return found
 
 
@@ -927,6 +951,8 @@ def tidy(etype, fields):
             v = protect_caps(v)
         if k == "doi":
             v = strip_doi(v)
+            if v.startswith("10.5555/"):  # ACM's internal IDs look like DOIs but are not registered, so they don't resolve
+                continue
         out[k] = v
     if "doi" in out and re.match(r"https?://(dx\.)?doi\.org/", out.get("url", "")):
         del out["url"]
@@ -991,8 +1017,54 @@ def first_surname(ref):
     return surnames_for_display(ref.authors, 1).rstrip("; .") if ref.authors else ""
 
 
+def openalex_search(http, title, first_author):
+    """Title search in OpenAlex, a third independent index next to Semantic Scholar and Crossref."""
+    q = re.sub(r"[?*]", " ", title + (" " + first_author if first_author else ""))[:300]
+    st, j = http.json("https://api.openalex.org/works", params={"search": q, "per-page": 5})
+    out = []
+    for w in (j or {}).get("results") or []:
+        loc = (w.get("primary_location") or {}).get("source") or {}
+        venue = loc.get("display_name") or ""
+        out.append(Cand("OpenAlex", strip_tags(w.get("display_name") or ""),
+                        [(a.get("author") or {}).get("display_name", "") for a in w.get("authorships") or []],
+                        w.get("publication_year"), venue, strip_doi(w.get("doi") or "") or None, None, None, w.get("id"),
+                        preprint=(w.get("type") == "preprint" or "arxiv" in venue.lower())))
+    return out
+
+
+def confirms(ref, c):
+    """Stricter than is_good: the first author has to match as well, so a different paper that
+    shares a famous title and one author doesn't count as a second source."""
+    ac = author_check(ref.authors, c)
+    return is_good(ref, c) and (ac is None or ac.first_ok)
+
+
+def confirmations(ref):
+    """The distinct databases whose record matches the entry's title and authors."""
+    return sorted({c.source for c in ref.cands if confirms(ref, c)})
+
+
+def corroborated(ref, fields, source):
+    """True if a database other than `source` agrees with this BibTeX on title, first author and year.
+    One database's record is never trusted alone: they all have errors, and checking one
+    against another catches most of them."""
+    title = clean_latex(fields.get("title", ""))
+    authors = split_authors(fields.get("author", "") or fields.get("editor", ""))
+    year = to_year(fields.get("year") or fields.get("date"))
+    for c in ref.cands:
+        if c.source == source or title_sim(title, c.title) < 88:
+            continue
+        if authors and c.authors and not _name_hit(authors[0], set().union(*(surname_keys(a) for a in c.authors))):
+            continue
+        if year and c.year and abs(year - c.year) > 1:  # a preprint and its proceedings often differ by a year
+            continue
+        return True
+    return False
+
+
 def lookup_basic(http, ref):
-    """Identifier checks plus title search in Semantic Scholar, then Crossref if needed."""
+    """Identifier checks plus title search in Semantic Scholar, Crossref and OpenAlex, every one of
+    them for every entry, so each result can be checked against independent records."""
     if ref.doi:
         c, state = crossref_doi(http, ref.doi)
         if c:
@@ -1015,8 +1087,8 @@ def lookup_basic(http, ref):
     ref.cands += cands
     if st not in (200, 404):
         ref.errors.append("Semantic Scholar did not answer")
-    if not any(is_good(ref, c) for c in ref.cands):
-        ref.cands += crossref_search(http, ref.title, first_surname(ref))
+    ref.cands += crossref_search(http, ref.title, first_surname(ref))
+    ref.cands += openalex_search(http, ref.title, first_surname(ref))
 
 
 def lookup_dblp(http, refs):
@@ -1050,7 +1122,8 @@ def lookup_dblp(http, refs):
 
 
 def lookup_scholar(http, refs, everything):
-    todo = [r for r in refs if r.title and (everything or not any(is_good(r, c) for c in r.cands))]
+    # Google Scholar is the extra source for entries fewer than two databases confirm
+    todo = [r for r in refs if r.title and (everything or len(confirmations(r)) < 2)]
     if not todo:
         return
     print(f"Searching Google Scholar (SerpApi) for {len(todo)} entr{'y' if len(todo) == 1 else 'ies'}...")
@@ -1076,7 +1149,7 @@ def judge(ref):
     scored = [(title_sim(ref.title, c.title), c) for c in ref.cands]
     if not scored or max(s for s, _ in scored) < TITLE_CLOSE:
         ref.status = "NOT FOUND"
-        where = "Semantic Scholar, DBLP, Crossref" + (", arXiv" if ref.arxiv else "")
+        where = "Semantic Scholar, DBLP, Crossref, OpenAlex" + (", arXiv" if ref.arxiv else "")
         if ref.scholar_checked:
             where += ", Google Scholar"
         ref.problems.append(f"no paper with this title was found in {where}. It may be made up, "
@@ -1107,7 +1180,11 @@ def judge(ref):
     elif ac and not ac.first_ok:
         ref.problems.append(f"the first author differs (real first author: {surnames_for_display(best.authors, 1)})")
 
-    years = [c.year for c in same if c.year]
+    pool = [c for c in same if c.year]
+    if ref.venue != "arXiv" and any(not c.preprint for c in pool):
+        pool = [c for c in pool if not c.preprint]  # the entry cites a published version
+    registry = {c.doi.lower(): c.year for c in pool if c.source == "Crossref" and c.doi}
+    years = [registry.get((c.doi or "").lower(), c.year) for c in pool]  # for a DOI, Crossref's year wins
     if ref.year and years:
         closest = min(years, key=lambda y: abs(y - ref.year))
         if abs(closest - ref.year) >= 2:
@@ -1124,12 +1201,101 @@ def judge(ref):
             ref.problems.append(f"the venue differs (yours says {ref.venue}, the paper appeared at {', '.join(sorted(found))})")
         elif preprint_only and not any(venue_code(c.venue) == ref.venue for c in same):
             ref.problems.append(f"only an arXiv preprint was found; check that it really appeared at {ref.venue}")
+    mine = clean_latex(ref.fields.get("journal") or ref.fields.get("journaltitle") or ref.fields.get("booktitle") or "")
+    if mine and not ref.venue:  # a venue venue_code() doesn't know, so compare the names
+        pubs = [c for c in same if c.venue and not c.preprint and is_good(ref, c)]
+        near = [c for c in pubs if ref.year and c.year and abs(c.year - ref.year) <= 1] or pubs
+        if near and not any(same_venue(mine, c.venue) for c in near):
+            ref.problems.append(f"the venue differs (yours says {short(mine, 60)}; the databases list "
+                                f"{'; '.join(sorted({short(c.venue, 60) for c in near}))})")
 
     ref.problems += ref.id_problems
+    ref.confirmed_by = confirmations(ref)
+    if not ref.problems and len(ref.confirmed_by) < 2:
+        only = ref.confirmed_by[0] if ref.confirmed_by else "no database"
+        ref.problems.append(f"only one database ({only}) confirms this entry, and every entry needs two independent "
+                            "sources; confirm it in a second one (a publisher page, DBLP, OpenAlex, Google Scholar)")
     ref.status = "CHECK" if ref.problems else "OK"
 
 
+VENUE_STOP = {"of", "the", "and", "on", "in", "for", "proceedings", "proc", "annual", "international", "conference"}
+
+
+def _abbrev(x, y):
+    """x abbreviates y, ISO 4 style: same first letter, and x's letters appear in y in order (natl, national)."""
+    it = iter(y)
+    return x[0] == y[0] and all(ch in it for ch in x)
+
+
+def _venue_words(s):
+    return [w for w in re.sub(r"[^a-z0-9 ]", " ", fold(clean_latex(s)).lower()).split() if w not in VENUE_STOP]
+
+
+def same_venue(a, b):
+    """True if two venue names plausibly name the same venue, abbreviations included
+    ("J. Mach. Learn. Res." and "Journal of Machine Learning Research")."""
+    ca, cb = venue_code(a), venue_code(b)
+    if ca and cb:
+        return ca == cb
+    wa, wb = _venue_words(a), _venue_words(b)
+    if not wa or not wb:
+        return True  # nothing to compare
+    if len(wa) == len(wb) and all(_abbrev(x, y) or _abbrev(y, x) for x, y in zip(wa, wb)):
+        return True  # word by word, one name abbreviates the other
+    for x, y in ((a, b), (b, a)):  # an acronym (PNAS, JMLR)
+        words = [w for w in re.sub(r"[^a-z0-9 ]", " ", fold(clean_latex(y)).lower()).split()
+                 if w not in ("of", "the", "and", "on", "in", "for")]
+        if re.fullmatch(r"[A-Z]{3,}", clean_latex(x).strip()) and "".join(w[0] for w in words).startswith(x.strip().lower()):
+            return True
+    return fuzz.token_sort_ratio(" ".join(wa), " ".join(wb)) >= 85
+
+
+def version_conflict(ref, fields):
+    """Why using this BibTeX would change what the entry cites, or lose something it says; None if safe.
+    It guards against the two ways a cleanup goes wrong: swapping the cited version for another one
+    (a conference paper for its later journal reprint, one co-published copy for another), and dropping
+    where the work appeared (a book's publisher, a thesis's school)."""
+    for k in ("publisher", "school", "institution"):
+        if ref.fields.get(k) and not fields.get(k) and ref.etype in ("book", "phdthesis", "mastersthesis", "techreport", "manual"):
+            return f"has no {k}, which your entry gives ({short(clean_latex(ref.fields[k]), 40)})"
+    mine = clean_latex(ref.fields.get("journal") or ref.fields.get("journaltitle") or ref.fields.get("booktitle") or "")
+    if mine and not (fields.get("journal") or fields.get("booktitle")) and ref.etype in ("article", "inproceedings"):
+        return f"has no journal or booktitle, which your entry gives ({short(mine, 40)})"
+    theirs = clean_latex(fields.get("journal") or fields.get("booktitle") or "")
+    new_year = to_year(fields.get("year") or fields.get("date"))
+    year_moves = bool(ref.year and new_year and abs(new_year - ref.year) >= 2)
+    venue_moves = bool(mine and theirs and not same_venue(mine, theirs))
+    if not (year_moves or venue_moves):
+        return None
+    # The change is a fix only if no database knows the version the entry cites.
+    new_doi = strip_doi(fields.get("doi", "")).lower()
+    own = [c for c in ref.cands if is_good(ref, c) and not (new_doi and (c.doi or "").lower() == new_doi)
+           and (not ref.year or not c.year or abs(c.year - ref.year) <= 1)
+           and (not mine or not c.venue or same_venue(mine, c.venue))]
+    if own:
+        return (f"describes a different version ({short(theirs, 50) or 'no venue'}, {new_year}) from the one your "
+                f"entry cites, which {own[0].source} also lists")
+    return None
+
+
 def suggest(http, ref, scholar_bib):
+    """The best BibTeX for the matched paper, as (etype, fields, source), but only when a second,
+    independent database agrees with it on title, first author and year, and it describes the same
+    version the entry cites without dropping where it appeared. Otherwise None, and the entry is kept."""
+    got = _suggest(http, ref, scholar_bib)
+    if not got:
+        return None
+    if not corroborated(ref, got[1], got[2]):
+        ref.notes.append(f"the {got[2]} record was not confirmed by a second database, so its BibTeX was not used")
+        return None
+    why = version_conflict(ref, got[1])
+    if why:
+        ref.notes.append(f"the {got[2]} record {why}, so your entry was kept as it is")
+        return None
+    return got
+
+
+def _suggest(http, ref, scholar_bib):
     """Pick the best BibTeX for the paper that was matched. Returns (etype, fields, source) or None."""
     best = ref.best
     if not best:
@@ -1158,7 +1324,12 @@ def suggest(http, ref, scholar_bib):
             if txt and from_bibtex_text(txt):
                 return (*from_bibtex_text(txt), "Crossref")
         return (*tidy(*dblp_fields(c)), "DBLP")
-    doi = next((c.doi for c in versions if c.doi and not c.doi.lower().startswith("10.48550/")), None)
+    mine = clean_latex(ref.fields.get("journal") or ref.fields.get("booktitle") or "")
+    with_doi = sorted((c for c in versions if c.doi and not c.doi.lower().startswith("10.48550/")),
+                      key=lambda c: (c.doi.lower() != (ref.doi or "").lower(),  # the entry's own DOI first,
+                                     not (mine and c.venue and same_venue(mine, c.venue)),  # then its venue,
+                                     abs((c.year or 0) - (ref.year or c.year or 0))))  # then its year
+    doi = with_doi[0].doi if with_doi else None
     if doi:
         txt = crossref_bibtex(http, doi)
         if txt and from_bibtex_text(txt):
@@ -1355,13 +1526,18 @@ def md_escape(s):
     return (s or "").replace("|", "\\|").replace("\n", " ")
 
 
-def write_report(path, refs, counts, src_name):
-    L = [f"# Reference check for {src_name}", "",
+def write_report(path, refs, counts, src_name, down=None):
+    L = [f"# Reference check for {src_name}", ""]
+    for host, why in sorted((down or {}).items()):
+        L += [f"**Unavailable during this run: {host}**, because {why}. Entries it would have confirmed were flagged "
+              "instead of passed. Run the check again later.", ""]
+    L += [
          f"Checked {len(refs)} entries on {date.today()}. "
          f"OK: {counts['OK']}, CHECK: {counts['CHECK']}, NOT FOUND: {counts['NOT FOUND']}, WEB: {counts['WEB']}"
          + (f", UNCHECKED: {counts['UNCHECKED']}" if counts.get("UNCHECKED") else "") + ".", "",
-         "OK means the paper was found and your entry matches it, so it was replaced with clean BibTeX. "
-         "CHECK means a real paper was found but something in your entry is wrong. "
+         "OK means at least two independent databases found the paper and agree with your entry, so it was replaced "
+         "with clean BibTeX that a second database confirms. "
+         "CHECK means something in your entry is wrong, or only one database confirms it. "
          "NOT FOUND means no matching paper was found anywhere, so check it by hand. "
          "WEB means a website or software entry. Paper databases do not list these, so only the link was checked. "
          "UNCHECKED means the entry could not be parsed, so it was not looked up; fix its syntax.", ""]
@@ -1376,6 +1552,7 @@ def write_report(path, refs, counts, src_name):
             if r.best:
                 L.append(f"- Closest real paper: \"{md_escape(r.best.title)}\", {md_escape(surnames_for_display(r.best.authors))}, "
                          f"{r.best.year or '?'}, {md_escape(short(r.best.venue, 80)) or 'venue unknown'} (found in {r.best.source})")
+            L.append(f"- Confirmed by: {', '.join(r.confirmed_by) or 'no database'}")
             for p in r.problems:
                 L.append(f"- Problem: {md_escape(p)}")
             for n in r.notes:
@@ -1390,11 +1567,11 @@ def write_report(path, refs, counts, src_name):
                 L += ["", f"Suggested replacement (from {r.suggestion[2]}):", "", "```bibtex",
                       format_entry(r.suggestion[0], r.key, r.suggestion[1]), "```"]
             L.append("")
-    L += ["## All entries", "", "| Status | Key | Title | BibTeX from | Notes |", "|---|---|---|---|---|"]
+    L += ["## All entries", "", "| Status | Key | Title | Confirmed by | BibTeX from | Notes |", "|---|---|---|---|---|---|"]
     for r in refs:
         src = r.suggestion[2] if r.suggestion and r.decision in ("auto", "accept") else ("pasted" if r.decision == "paste" else "yours")
         notes = "; ".join(r.notes + ([f"lookup trouble: {', '.join(r.errors)}"] if r.errors else []))
-        L.append(f"| {r.status} | `{r.key}` | {md_escape(short(r.title, 70))} | {src} | {md_escape(notes)} |")
+        L.append(f"| {r.status} | `{r.key}` | {md_escape(short(r.title, 70))} | {', '.join(r.confirmed_by) or '-'} | {src} | {md_escape(notes)} |")
     path.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
@@ -1404,7 +1581,7 @@ def write_report(path, refs, counts, src_name):
 
 def main():
     # Windows sends piped output through cp1252, which cannot print most non-Latin titles.
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)  # progress shows up even when piped
     sys.stdin.reconfigure(encoding="utf-8", errors="replace")  # BibTeX pasted during -i review
     ap = argparse.ArgumentParser(description="Check every entry of a .bib file against real paper databases.")
     ap.add_argument("bibfile", nargs="?")
@@ -1499,6 +1676,9 @@ def main():
         print("Comparing entries and fetching clean BibTeX...")
         for ref in todo:
             judge(ref)
+            if http.down and ref.status in ("NOT FOUND", "CHECK"):
+                ref.problems.append(f"some databases were unavailable during this run ({', '.join(sorted(http.down))}), "
+                                    "so run the check again later before concluding anything")
             if ref.status == "NOT FOUND" and looks_like_web(ref):
                 ref.status, ref.problems = "WEB", []
                 check_link(http, ref)
@@ -1521,8 +1701,10 @@ def main():
 
     counts = {s: sum(1 for r in checked if r.status == s) for s in ("OK", "CHECK", "NOT FOUND", "WEB", "UNCHECKED")}
     write_bib(out_path, blocks, refs_by_block, counts, src.name)
-    write_report(report_path, checked, counts, src.name)
+    write_report(report_path, checked, counts, src.name, http.down)
 
+    for host, why in sorted(http.down.items()):
+        print(f"\nUnavailable during this run: {host}, because {why}. Entries it would have confirmed are flagged; rerun later.")
     print(f"\nOK: {counts['OK']}   CHECK: {counts['CHECK']}   NOT FOUND: {counts['NOT FOUND']}   WEB: {counts['WEB']}"
           + (f"   UNCHECKED: {counts['UNCHECKED']}" if counts["UNCHECKED"] else ""))
     for r in checked:

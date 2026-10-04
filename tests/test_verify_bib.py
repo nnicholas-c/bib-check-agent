@@ -56,6 +56,16 @@ for blocked in (lambda url: 0, lambda url: 403 if "arxiv" in url else 200):
 preflight_with(lambda url: 429 if "semanticscholar" in url else 200)
 preflight_with(lambda url: 503 if "crossref" in url else 200)
 
+# A host that asks us to stay away for hours is dropped for the rest of the run instead of stalling it
+class Resp:
+    status_code, text, headers = 429, "", {"Retry-After": "61153"}
+calls429 = []
+h = vb.Http(pathlib.Path(tempfile.mkdtemp()) / "c.json", False, None)
+h.session.request = lambda *a, **kw: calls429.append(1) or Resp()
+assert h.get("https://api.openalex.org/works", params={"search": "x"})[0] == 429 and len(calls429) == 1
+assert h.get("https://api.openalex.org/works", params={"search": "y"})[0] == 429 and len(calls429) == 1  # not called again
+assert "api.openalex.org" in h.down
+
 # The email goes to Crossref as a query parameter only, never in the User-Agent every host sees
 h = vb.Http(pathlib.Path(tempfile.mkdtemp()) / "c.json", False, "me@example.org")
 assert "example.org" not in h.session.headers["User-Agent"]
@@ -75,6 +85,68 @@ arxiv_q = next(p["search_query"] for p in sent if p and "search_query" in p)
 assert "all:the" not in arxiv_q.lower() and "all:for" not in arxiv_q.lower() and "all:transformers" in arxiv_q, arxiv_q
 dead_oa = type("H", (), {"json": lambda self, url, **kw: (400, None), "get": lambda self, url, **kw: (404, "")})()
 assert vb.search_papers(dead_oa, "x y z")[0][1].startswith("(no answer: HTTP 400")
+
+# Double verification: one database is never enough to confirm an entry or to supply its BibTeX
+TITLE = "Deep Residual Learning for Image Recognition"
+cand = lambda src, year, authors=("Kaiming He", "Xiangyu Zhang"): vb.Cand(src, TITLE, list(authors), year, "CVPR")
+fresh = lambda: vb.make_ref("he2016", "inproceedings", "", {"title": TITLE, "author": "Kaiming He and Xiangyu Zhang", "year": "2016", "booktitle": "CVPR"})
+one = fresh(); one.cands = [cand("Semantic Scholar", 2016)]
+vb.judge(one)
+assert one.status == "CHECK" and "only one database" in one.problems[-1], one.problems
+two = fresh(); two.cands = [cand("Semantic Scholar", 2016), cand("Crossref", 2016)]
+vb.judge(two)
+assert two.status == "OK" and two.confirmed_by == ["Crossref", "Semantic Scholar"], (two.status, two.problems)
+same_source_twice = fresh(); same_source_twice.cands = [cand("Crossref", 2016), cand("Crossref", 2016)]
+vb.judge(same_source_twice)
+assert same_source_twice.status == "CHECK", "two records from one database are not two sources"
+fields = {"title": TITLE, "author": "Kaiming He and Xiangyu Zhang", "year": "2016"}
+assert vb.corroborated(two, fields, "DBLP")                                   # another database agrees
+assert not vb.corroborated(two, dict(fields, year="2012"), "DBLP")            # every other database says 2016
+assert not vb.corroborated(two, dict(fields, author="Ross Girshick"), "DBLP")  # wrong first author
+assert not vb.corroborated(one, fields, "Semantic Scholar")                   # a source can't confirm itself
+
+# Same-version guard: a cleanup must not swap the cited version for another one, or drop where it appeared
+assert vb.same_venue("J. Mach. Learn. Res.", "Journal of Machine Learning Research")
+assert vb.same_venue("Journal of Machine Learning Research", "J. Mach. Learn. Res.")  # either order
+assert vb.same_venue("Advances in Neural Information Processing Systems 25", "NIPS")
+assert not vb.same_venue("BMJ", "Systematic Reviews")
+assert not vb.same_venue("Advances in Neural Information Processing Systems", "Communications of the ACM")
+IMG = "ImageNet Classification with Deep Convolutional Neural Networks"
+nips = vb.make_ref("k12", "inproceedings", "", {"title": IMG, "author": "Alex Krizhevsky and Ilya Sutskever and Geoffrey Hinton",
+                                                 "booktitle": "Advances in Neural Information Processing Systems", "year": "2012"})
+nips.cands = [vb.Cand("Semantic Scholar", IMG, ["Alex Krizhevsky", "I. Sutskever", "Geoffrey E. Hinton"], 2012, "Neural Information Processing Systems"),
+              vb.Cand("Crossref", IMG, ["Alex Krizhevsky", "Ilya Sutskever", "Geoffrey E. Hinton"], 2017, "Communications of the ACM")]
+reprint = {"title": IMG, "author": "Krizhevsky, Alex and Sutskever, Ilya and Hinton, Geoffrey E.", "journal": "Communications of the ACM", "year": "2017"}
+assert "different version" in vb.version_conflict(nips, reprint)               # the 2012 paper exists, so keep it
+wrong_year = vb.make_ref("k14", "inproceedings", "", {"title": TITLE, "author": "Kaiming He and Xiangyu Zhang", "booktitle": "CVPR", "year": "2010"})
+wrong_year.cands = [cand("Semantic Scholar", 2016), cand("Crossref", 2016)]
+assert vb.version_conflict(wrong_year, {"title": TITLE, "author": "Kaiming He", "booktitle": "CVPR", "year": "2016"}) is None  # a real fix
+book = vb.make_ref("b", "book", "", {"title": "Deep Learning", "author": "Ian Goodfellow", "publisher": "MIT Press", "year": "2016"})
+assert "no publisher" in vb.version_conflict(book, {"title": "Deep Learning", "author": "Ian Goodfellow", "year": "2016"})
+assert "doi" not in vb.tidy("article", {"title": "T", "doi": "10.5555/2627435.2670313"})[1]  # ACM IDs aren't real DOIs
+
+# Two planted errors the accuracy benchmark (tests/benchmark) caught getting through.
+# Semantic Scholar gives ResNet's CVPR DOI with the arXiv year, which made a wrong 2014 look one year off.
+res = vb.make_ref("he", "inproceedings", "", {"title": TITLE, "author": "Kaiming He and Xiangyu Zhang", "booktitle": "CVPR", "year": "2014"})
+res.cands = [vb.Cand("Semantic Scholar", TITLE, ["Kaiming He", "X. Zhang"], 2015, "Computer Vision and Pattern Recognition", "10.1109/cvpr.2016.90"),
+             vb.Cand("Crossref", TITLE, ["Kaiming He", "Xiangyu Zhang"], 2016, "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)", "10.1109/cvpr.2016.90"),
+             vb.Cand("DBLP", TITLE, ["Kaiming He", "Xiangyu Zhang"], 2015, "CoRR", preprint=True)]
+vb.judge(res)
+assert any("yours 2014, real 2016" in p for p in res.problems), res.problems
+fix = {"title": TITLE, "author": "Kaiming He", "booktitle": "CVPR", "year": "2016", "doi": "10.1109/CVPR.2016.90"}
+assert vb.version_conflict(res, fix) is None  # the 2015 record has the fix's own DOI, so it isn't another version
+# A wrong journal outside the known CS venues; Semantic Scholar's match is a different paper with one shared author.
+PT = "Prospect Theory: An Analysis of Decision under Risk"
+pt = vb.make_ref("k79", "article", "", {"title": PT, "author": "Daniel Kahneman and Amos Tversky", "journal": "American Economic Review", "year": "1979"})
+pt.cands = [vb.Cand("Semantic Scholar", PT, ["Craig R. Fox", "A. Tversky"], 1995),
+            vb.Cand("Crossref", PT, ["Daniel Kahneman", "Amos Tversky"], 2000, "Choices, Values, and Frames", "10.1017/cbo9780511803475.003"),
+            vb.Cand("Crossref", PT, ["Daniel Kahneman", "Amos Tversky"], 1979, "Econometrica", "10.2307/1914185")]
+vb.judge(pt)
+assert pt.confirmed_by == ["Crossref"] and any("Econometrica" in p for p in pt.problems), (pt.confirmed_by, pt.problems)
+assert vb.same_venue("Proc. Natl. Acad. Sci. U.S.A.", "Proceedings of the National Academy of Sciences of the United States of America")
+assert vb.same_venue("PNAS", "Proceedings of the National Academy of Sciences") and vb.same_venue("The Lancet", "Lancet")
+assert vb._name_hit("{International Human Genome Sequencing Consortium}", vb.surname_keys("International Human Genome Sequencing Consortium"))
+assert not vb.same_venue("Nature", "Nature Communications") and not vb.same_venue("American Economic Review", "Econometrica")
 
 # An entry with no comma after its key is still found, so it can be reported as unparseable
 assert [b[2] for b in vb.scan_bib("@article{nokey\n title={X}}\n@misc{ok, title={Y}}") if b[0] == "entry"] == ["nokey", "ok"]

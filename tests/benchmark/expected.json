@@ -1,0 +1,274 @@
+{
+ "lecun2015deep": {
+  "kind": "real",
+  "error": null
+ },
+ "goodfellow2016book": {
+  "kind": "real",
+  "error": null
+ },
+ "jain2019attention": {
+  "kind": "real",
+  "error": null
+ },
+ "wiegreffe2019attention": {
+  "kind": "real",
+  "error": null
+ },
+ "brown2020language": {
+  "kind": "real",
+  "error": null
+ },
+ "he2016deep": {
+  "kind": "real-corrupted",
+  "error": "wrong year"
+ },
+ "devlin2019bert": {
+  "kind": "real-corrupted",
+  "error": "wrong author"
+ },
+ "kingma2015adam": {
+  "kind": "real-corrupted",
+  "error": "wrong venue and year"
+ },
+ "vaswani2017attention": {
+  "kind": "real",
+  "error": null
+ },
+ "srivastava2014dropout": {
+  "kind": "real",
+  "error": null
+ },
+ "goodfellow2014gan": {
+  "kind": "real-corrupted",
+  "error": "wrong venue"
+ },
+ "mikolov2013distributed": {
+  "kind": "real",
+  "error": null
+ },
+ "krizhevsky2012imagenet": {
+  "kind": "real",
+  "error": null
+ },
+ "hochreiter1997long": {
+  "kind": "real-corrupted",
+  "error": "wrong second author"
+ },
+ "ioffe2015batch": {
+  "kind": "real",
+  "error": null
+ },
+ "silver2016mastering": {
+  "kind": "real-corrupted",
+  "error": "DOI of another paper (the DQN paper)"
+ },
+ "jumper2021alphafold": {
+  "kind": "real",
+  "error": null
+ },
+ "pedregosa2011scikit": {
+  "kind": "real",
+  "error": null
+ },
+ "ronneberger2015unet": {
+  "kind": "real-corrupted",
+  "error": "arXiv ID of another paper (ResNet)"
+ },
+ "ren2015faster": {
+  "kind": "real",
+  "error": null
+ },
+ "chen2016xgboost": {
+  "kind": "real",
+  "error": null
+ },
+ "breiman2001random": {
+  "kind": "real-corrupted",
+  "error": "wrong year and journal"
+ },
+ "shannon1948mathematical": {
+  "kind": "real-corrupted",
+  "error": "misspelled title"
+ },
+ "turing1950computing": {
+  "kind": "real",
+  "error": null
+ },
+ "dean2008mapreduce": {
+  "kind": "real",
+  "error": null
+ },
+ "ghemawat2003google": {
+  "kind": "real",
+  "error": null
+ },
+ "maldacena1999large": {
+  "kind": "real",
+  "error": null
+ },
+ "abbott2016observation": {
+  "kind": "real",
+  "error": null
+ },
+ "einstein1905elektrodynamik": {
+  "kind": "real",
+  "error": null
+ },
+ "watson1953molecular": {
+  "kind": "real-corrupted",
+  "error": "title cut short"
+ },
+ "jinek2012programmable": {
+  "kind": "real-corrupted",
+  "error": "first author missing"
+ },
+ "lander2001initial": {
+  "kind": "real",
+  "error": null
+ },
+ "lowry1951protein": {
+  "kind": "real-corrupted",
+  "error": "wrong year"
+ },
+ "page2021prisma": {
+  "kind": "real",
+  "error": null
+ },
+ "tibshirani1996regression": {
+  "kind": "real-corrupted",
+  "error": "wrong authors"
+ },
+ "benjamini1995controlling": {
+  "kind": "real",
+  "error": null
+ },
+ "dempster1977maximum": {
+  "kind": "real-corrupted",
+  "error": "wrong year"
+ },
+ "kahneman1979prospect": {
+  "kind": "real-corrupted",
+  "error": "wrong journal"
+ },
+ "coase1937nature": {
+  "kind": "real",
+  "error": null
+ },
+ "hardin1968tragedy": {
+  "kind": "real",
+  "error": null
+ },
+ "hastie2009elements": {
+  "kind": "real",
+  "error": null
+ },
+ "harris2020array": {
+  "kind": "real-corrupted",
+  "error": "DOI of another paper (SciPy)"
+ },
+ "virtanen2020scipy": {
+  "kind": "real",
+  "error": null
+ },
+ "pennington2014glove": {
+  "kind": "real",
+  "error": null
+ },
+ "sutskever2014sequence": {
+  "kind": "real",
+  "error": null
+ },
+ "bahdanau2015neural": {
+  "kind": "real",
+  "error": null
+ },
+ "liu2019roberta": {
+  "kind": "real",
+  "error": null
+ },
+ "wei2022chain": {
+  "kind": "real",
+  "error": null
+ },
+ "touvron2023llama": {
+  "kind": "real-corrupted",
+  "error": "preprint claimed as a NeurIPS paper"
+ },
+ "ho2020denoising": {
+  "kind": "real-corrupted",
+  "error": "authors in the wrong order"
+ },
+ "kingma2014auto": {
+  "kind": "real",
+  "error": null
+ },
+ "dosovitskiy2021image": {
+  "kind": "real",
+  "error": null
+ },
+ "sutskever2013training": {
+  "kind": "real",
+  "error": null
+ },
+ "fielding1999rfc2616": {
+  "kind": "real",
+  "error": null
+ },
+ "rombach2022high": {
+  "kind": "real",
+  "error": null
+ },
+ "raffel2020exploring": {
+  "kind": "real",
+  "error": null
+ },
+ "chen2023gradfold": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "solberg2022crosslingual": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "tanabe2021thermal": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "lindqvist2019microbiome": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "ferrante2017liquidity": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "brandt2014omission": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "okoro2021attention": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "varga2020residual": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "halvorsen2021fewshot": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "duarte2019batchnorm": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "whitfield2018lstm": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ },
+ "nakamura2016prospect": {
+  "kind": "fabricated",
+  "error": "invented reference"
+ }
+}

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "bib-check-agent",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Find and fix hallucinated, wrong or unsupported citations in LaTeX .bib files, with every fix independently re-checked.",
   "author": { "name": "nnicholas-c" },
   "homepage": "https://github.com/nnicholas-c/bib-check-agent",

@@ -1,0 +1,909 @@
+{
+ "_about": "Real works for the accuracy benchmark. Ground truth for DOI items comes from the DOI registry; items without a DOI carry hand-written truth that tests/benchmark/build.py marks for independent verification. 'expect' is a lowercase fragment the registry title must contain, so a mistyped identifier can't slip in. 'alt_years' are other years that are legitimately cited for the same work. 'venue' terms: the final entry's venue must contain one of them (case-insensitive).",
+ "real": [
+  {
+   "key": "lecun2015deep",
+   "doi": "10.1038/nature14539",
+   "expect": "deep learning",
+   "venue": [
+    "Nature"
+   ],
+   "field": "ml"
+  },
+  {
+   "key": "goodfellow2016book",
+   "manual": {
+    "title": "Deep Learning",
+    "authors": [
+     "Goodfellow",
+     "Bengio",
+     "Courville"
+    ],
+    "year": 2016,
+    "venue": [
+     "MIT Press"
+    ],
+    "type": "book",
+    "authors_full": [
+     "Ian Goodfellow",
+     "Yoshua Bengio",
+     "Aaron Courville"
+    ]
+   },
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://www.deeplearningbook.org/",
+     "https://books.google.com/books?id=omivDQAAQBAJ&newbks=0"
+    ]
+   }
+  },
+  {
+   "key": "jain2019attention",
+   "doi": "10.18653/v1/N19-1357",
+   "expect": "attention is not explanation",
+   "venue": [
+    "North American",
+    "NAACL"
+   ],
+   "field": "nlp"
+  },
+  {
+   "key": "wiegreffe2019attention",
+   "doi": "10.18653/v1/D19-1002",
+   "expect": "attention is not not explanation",
+   "venue": [
+    "Empirical Methods",
+    "EMNLP"
+   ],
+   "field": "nlp"
+  },
+  {
+   "key": "brown2020language",
+   "arxiv": "2005.14165",
+   "expect": "few-shot learners",
+   "year": 2020,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper/2020/hash/1457c0d6bfcb4967418bfb8ac142f64a-Abstract.html",
+     "https://proceedings.neurips.cc/paper_files/paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "he2016deep",
+   "doi": "10.1109/CVPR.2016.90",
+   "expect": "deep residual learning",
+   "venue": [
+    "Computer Vision and Pattern Recognition",
+    "CVPR"
+   ],
+   "field": "cv"
+  },
+  {
+   "key": "devlin2019bert",
+   "doi": "10.18653/v1/N19-1423",
+   "expect": "bert",
+   "venue": [
+    "North American",
+    "NAACL"
+   ],
+   "field": "nlp"
+  },
+  {
+   "key": "kingma2015adam",
+   "arxiv": "1412.6980",
+   "expect": "adam",
+   "year": 2015,
+   "alt_years": [
+    2014
+   ],
+   "venue": [
+    "Learning Representations",
+    "ICLR",
+    "arXiv"
+   ],
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://arxiv.org/abs/1412.6980",
+     "https://iclr.cc/archive/www/doku.php%3Fid=iclr2015:accepted-main.html"
+    ]
+   }
+  },
+  {
+   "key": "vaswani2017attention",
+   "arxiv": "1706.03762",
+   "expect": "attention is all you need",
+   "year": 2017,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS",
+    "NIPS"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html",
+     "https://proceedings.neurips.cc/paper_files/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "srivastava2014dropout",
+   "manual": {
+    "title": "Dropout: A Simple Way to Prevent Neural Networks from Overfitting",
+    "authors": [
+     "Srivastava",
+     "Hinton",
+     "Krizhevsky",
+     "Sutskever",
+     "Salakhutdinov"
+    ],
+    "year": 2014,
+    "venue": [
+     "Journal of Machine Learning Research",
+     "JMLR"
+    ],
+    "type": "article",
+    "authors_full": [
+     "Nitish Srivastava",
+     "Geoffrey Hinton",
+     "Alex Krizhevsky",
+     "Ilya Sutskever",
+     "Ruslan Salakhutdinov"
+    ]
+   },
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://jmlr.org/papers/v15/srivastava14a.html",
+     "https://jmlr.org/papers/v15/srivastava14a.bib"
+    ]
+   }
+  },
+  {
+   "key": "goodfellow2014gan",
+   "arxiv": "1406.2661",
+   "expect": "generative adversarial",
+   "year": 2014,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS",
+    "NIPS"
+   ],
+   "field": "ml",
+   "title_override": "Generative Adversarial Nets",
+   "alt_titles": [
+    "Generative Adversarial Networks"
+   ],
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper/5423-generative-adversarial-nets",
+     "https://proceedings.neurips.cc/paper_files/paper/2014/file/f033ed80deb0234979a61f95710dbe25-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "mikolov2013distributed",
+   "arxiv": "1310.4546",
+   "expect": "distributed representations of words",
+   "year": 2013,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS",
+    "NIPS"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper/2013/hash/9aa42b31882ec039965f3c4923ce901b-Abstract.html",
+     "https://proceedings.neurips.cc/paper_files/paper/2013/file/9aa42b31882ec039965f3c4923ce901b-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "krizhevsky2012imagenet",
+   "manual": {
+    "title": "ImageNet Classification with Deep Convolutional Neural Networks",
+    "authors": [
+     "Krizhevsky",
+     "Sutskever",
+     "Hinton"
+    ],
+    "year": 2012,
+    "venue": [
+     "Neural Information Processing",
+     "NeurIPS",
+     "NIPS"
+    ],
+    "type": "inproceedings",
+    "authors_full": [
+     "Alex Krizhevsky",
+     "Ilya Sutskever",
+     "Geoffrey E. Hinton"
+    ]
+   },
+   "trap": "the same title was reprinted in Communications of the ACM in 2017; the entry cites the 2012 NIPS paper",
+   "field": "cv",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html",
+     "https://papers.nips.cc/paper_files/paper/2012/file/c399862d3b9d6b76c8436e924a68c45b-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "hochreiter1997long",
+   "doi": "10.1162/neco.1997.9.8.1735",
+   "expect": "long short-term memory",
+   "venue": [
+    "Neural Computation"
+   ],
+   "field": "ml"
+  },
+  {
+   "key": "ioffe2015batch",
+   "manual": {
+    "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
+    "authors": [
+     "Ioffe",
+     "Szegedy"
+    ],
+    "year": 2015,
+    "venue": [
+     "Machine Learning",
+     "ICML",
+     "PMLR"
+    ],
+    "type": "inproceedings",
+    "authors_full": [
+     "Sergey Ioffe",
+     "Christian Szegedy"
+    ]
+   },
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.mlr.press/v37/ioffe15.html"
+    ]
+   }
+  },
+  {
+   "key": "silver2016mastering",
+   "doi": "10.1038/nature16961",
+   "expect": "game of go",
+   "venue": [
+    "Nature"
+   ],
+   "field": "ml"
+  },
+  {
+   "key": "jumper2021alphafold",
+   "doi": "10.1038/s41586-021-03819-2",
+   "expect": "alphafold",
+   "venue": [
+    "Nature"
+   ],
+   "field": "bio"
+  },
+  {
+   "key": "pedregosa2011scikit",
+   "manual": {
+    "title": "Scikit-learn: Machine Learning in Python",
+    "authors": [
+     "Pedregosa",
+     "Varoquaux",
+     "Gramfort",
+     "Michel",
+     "Thirion",
+     "Grisel",
+     "Blondel",
+     "Prettenhofer",
+     "Weiss",
+     "Dubourg",
+     "Vanderplas",
+     "Passos",
+     "Cournapeau",
+     "Brucher",
+     "Perrot",
+     "Duchesnay"
+    ],
+    "year": 2011,
+    "venue": [
+     "Journal of Machine Learning Research",
+     "JMLR"
+    ],
+    "type": "article",
+    "authors_full": [
+     "Fabian Pedregosa",
+     "Gaël Varoquaux",
+     "Alexandre Gramfort",
+     "Vincent Michel",
+     "Bertrand Thirion",
+     "Olivier Grisel",
+     "Mathieu Blondel",
+     "Peter Prettenhofer",
+     "Ron Weiss",
+     "Vincent Dubourg",
+     "Jake Vanderplas",
+     "Alexandre Passos",
+     "David Cournapeau",
+     "Matthieu Brucher",
+     "Matthieu Perrot",
+     "Édouard Duchesnay"
+    ]
+   },
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://jmlr.org/papers/v12/pedregosa11a.html",
+     "https://www.jmlr.org/papers/v12/pedregosa11a.bib"
+    ]
+   }
+  },
+  {
+   "key": "ronneberger2015unet",
+   "doi": "10.1007/978-3-319-24574-4_28",
+   "arxiv": "1505.04597",
+   "expect": "u-net",
+   "venue": [
+    "Medical Image Computing",
+    "MICCAI",
+    "Lecture Notes"
+   ],
+   "field": "cv"
+  },
+  {
+   "key": "ren2015faster",
+   "manual": {
+    "title": "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks",
+    "authors": [
+     "Ren",
+     "He",
+     "Girshick",
+     "Sun"
+    ],
+    "year": 2015,
+    "venue": [
+     "Neural Information Processing",
+     "NeurIPS",
+     "NIPS"
+    ],
+    "type": "inproceedings",
+    "authors_full": [
+     "Shaoqing Ren",
+     "Kaiming He",
+     "Ross Girshick",
+     "Jian Sun"
+    ]
+   },
+   "trap": "the same title appeared in IEEE TPAMI in 2017; the entry cites the 2015 NIPS paper",
+   "field": "cv",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://papers.nips.cc/paper_files/paper/2015/hash/14bfa6bb14875e45bba028a21ed38046-Abstract.html",
+     "https://papers.nips.cc/paper_files/paper/2015/file/14bfa6bb14875e45bba028a21ed38046-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "chen2016xgboost",
+   "doi": "10.1145/2939672.2939785",
+   "expect": "xgboost",
+   "venue": [
+    "Knowledge Discovery",
+    "KDD",
+    "SIGKDD"
+   ],
+   "field": "ml"
+  },
+  {
+   "key": "breiman2001random",
+   "doi": "10.1023/A:1010933404324",
+   "expect": "random forests",
+   "venue": [
+    "Machine Learning"
+   ],
+   "field": "ml"
+  },
+  {
+   "key": "shannon1948mathematical",
+   "doi": "10.1002/j.1538-7305.1948.tb01338.x",
+   "expect": "mathematical theory of communication",
+   "venue": [
+    "Bell System Technical Journal"
+   ],
+   "field": "cs"
+  },
+  {
+   "key": "turing1950computing",
+   "doi": "10.1093/mind/LIX.236.433",
+   "expect": "computing machinery and intelligence",
+   "venue": [
+    "Mind"
+   ],
+   "field": "cs"
+  },
+  {
+   "key": "dean2008mapreduce",
+   "doi": "10.1145/1327452.1327492",
+   "expect": "mapreduce",
+   "venue": [
+    "Communications of the ACM"
+   ],
+   "trap": "the 2004 OSDI paper has the same title; this entry cites the 2008 CACM article",
+   "field": "systems"
+  },
+  {
+   "key": "ghemawat2003google",
+   "doi": "10.1145/945445.945450",
+   "expect": "google file system",
+   "venue": [
+    "Symposium on Operating Systems",
+    "SOSP"
+   ],
+   "field": "systems"
+  },
+  {
+   "key": "maldacena1999large",
+   "doi": "10.1023/A:1026654312961",
+   "expect": "superconformal field theories",
+   "venue": [
+    "International Journal of Theoretical Physics"
+   ],
+   "alt_years": [
+    1997,
+    1998
+   ],
+   "field": "physics"
+  },
+  {
+   "key": "abbott2016observation",
+   "doi": "10.1103/PhysRevLett.116.061102",
+   "expect": "observation of gravitational waves",
+   "venue": [
+    "Physical Review Letters"
+   ],
+   "field": "physics"
+  },
+  {
+   "key": "einstein1905elektrodynamik",
+   "doi": "10.1002/andp.19053221004",
+   "expect": "elektrodynamik",
+   "venue": [
+    "Annalen der Physik"
+   ],
+   "field": "physics"
+  },
+  {
+   "key": "watson1953molecular",
+   "doi": "10.1038/171737a0",
+   "expect": "molecular structure of nucleic acids",
+   "venue": [
+    "Nature"
+   ],
+   "field": "bio"
+  },
+  {
+   "key": "jinek2012programmable",
+   "doi": "10.1126/science.1225829",
+   "expect": "programmable dual-rna",
+   "venue": [
+    "Science"
+   ],
+   "field": "bio"
+  },
+  {
+   "key": "lander2001initial",
+   "doi": "10.1038/35057062",
+   "expect": "initial sequencing and analysis of the human genome",
+   "venue": [
+    "Nature"
+   ],
+   "field": "bio"
+  },
+  {
+   "key": "lowry1951protein",
+   "doi": "10.1016/S0021-9258(19)52451-6",
+   "expect": "folin phenol reagent",
+   "venue": [
+    "Journal of Biological Chemistry"
+   ],
+   "field": "bio"
+  },
+  {
+   "key": "page2021prisma",
+   "doi": "10.1136/bmj.n71",
+   "expect": "prisma 2020",
+   "venue": [
+    "BMJ"
+   ],
+   "field": "medicine"
+  },
+  {
+   "key": "tibshirani1996regression",
+   "doi": "10.1111/j.2517-6161.1996.tb02080.x",
+   "expect": "lasso",
+   "venue": [
+    "Royal Statistical Society"
+   ],
+   "field": "stats"
+  },
+  {
+   "key": "benjamini1995controlling",
+   "doi": "10.1111/j.2517-6161.1995.tb02031.x",
+   "expect": "false discovery rate",
+   "venue": [
+    "Royal Statistical Society"
+   ],
+   "field": "stats"
+  },
+  {
+   "key": "dempster1977maximum",
+   "doi": "10.1111/j.2517-6161.1977.tb01600.x",
+   "expect": "incomplete data",
+   "venue": [
+    "Royal Statistical Society"
+   ],
+   "field": "stats"
+  },
+  {
+   "key": "kahneman1979prospect",
+   "doi": "10.2307/1914185",
+   "expect": "prospect theory",
+   "venue": [
+    "Econometrica"
+   ],
+   "field": "economics"
+  },
+  {
+   "key": "coase1937nature",
+   "doi": "10.1111/j.1468-0335.1937.tb00002.x",
+   "expect": "nature of the firm",
+   "venue": [
+    "Economica"
+   ],
+   "field": "economics"
+  },
+  {
+   "key": "hardin1968tragedy",
+   "doi": "10.1126/science.162.3859.1243",
+   "expect": "tragedy of the commons",
+   "venue": [
+    "Science"
+   ],
+   "field": "social"
+  },
+  {
+   "key": "hastie2009elements",
+   "doi": "10.1007/978-0-387-84858-7",
+   "expect": "elements of statistical learning",
+   "venue": [
+    "Springer"
+   ],
+   "type": "book",
+   "field": "stats"
+  },
+  {
+   "key": "harris2020array",
+   "doi": "10.1038/s41586-020-2649-2",
+   "expect": "array programming with numpy",
+   "venue": [
+    "Nature"
+   ],
+   "field": "software"
+  },
+  {
+   "key": "virtanen2020scipy",
+   "doi": "10.1038/s41592-019-0686-2",
+   "expect": "scipy 1.0",
+   "venue": [
+    "Nature Methods"
+   ],
+   "field": "software"
+  },
+  {
+   "key": "pennington2014glove",
+   "doi": "10.3115/v1/D14-1162",
+   "expect": "glove",
+   "venue": [
+    "Empirical Methods",
+    "EMNLP"
+   ],
+   "field": "nlp"
+  },
+  {
+   "key": "sutskever2014sequence",
+   "arxiv": "1409.3215",
+   "expect": "sequence to sequence learning",
+   "year": 2014,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS",
+    "NIPS"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper_files/paper/2014/hash/5a18e133cbf9f257297f410bb7eca942-Abstract.html",
+     "https://proceedings.neurips.cc/paper_files/paper/2014/file/5a18e133cbf9f257297f410bb7eca942-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "bahdanau2015neural",
+   "arxiv": "1409.0473",
+   "expect": "jointly learning to align",
+   "year": 2015,
+   "alt_years": [
+    2014
+   ],
+   "venue": [
+    "Learning Representations",
+    "ICLR",
+    "arXiv"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://iclr.cc/archive/www/doku.php%3Fid=iclr2015:accepted-main.html",
+     "https://arxiv.org/abs/1409.0473"
+    ]
+   }
+  },
+  {
+   "key": "liu2019roberta",
+   "arxiv": "1907.11692",
+   "expect": "roberta",
+   "year": 2019,
+   "venue": [
+    "arXiv"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://arxiv.org/abs/1907.11692",
+     "https://api.openreview.net/notes/search?term=RoBERTa%20Robustly%20Optimized&content=all&group=all&source=all&limit=10"
+    ]
+   }
+  },
+  {
+   "key": "wei2022chain",
+   "arxiv": "2201.11903",
+   "expect": "chain-of-thought",
+   "year": 2022,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper_files/paper/2022/hash/9d5609613524ecf4f15af0f7b31abca4-Abstract-Conference.html",
+     "https://proceedings.neurips.cc/paper_files/paper/2022/file/9d5609613524ecf4f15af0f7b31abca4-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "touvron2023llama",
+   "arxiv": "2302.13971",
+   "expect": "llama",
+   "year": 2023,
+   "venue": [
+    "arXiv"
+   ],
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://arxiv.org/abs/2302.13971",
+     "https://ai.meta.com/research/publications/llama-open-and-efficient-foundation-language-models/"
+    ]
+   }
+  },
+  {
+   "key": "ho2020denoising",
+   "arxiv": "2006.11239",
+   "expect": "denoising diffusion probabilistic",
+   "year": 2020,
+   "venue": [
+    "Neural Information Processing",
+    "NeurIPS"
+   ],
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://proceedings.neurips.cc/paper/2020/hash/4c5bcfec8584af0d967f1ab10179ca4b-Abstract.html",
+     "https://proceedings.neurips.cc/paper/2020/file/4c5bcfec8584af0d967f1ab10179ca4b-Bibtex.bib"
+    ]
+   }
+  },
+  {
+   "key": "kingma2014auto",
+   "arxiv": "1312.6114",
+   "expect": "auto-encoding variational bayes",
+   "year": 2014,
+   "alt_years": [
+    2013
+   ],
+   "venue": [
+    "Learning Representations",
+    "ICLR",
+    "arXiv"
+   ],
+   "field": "ml",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://iclr.cc/archive/2014/conference-proceedings/",
+     "https://dare.uva.nl/id/cf65ba0f-d88f-4a49-8ebd-3a7fce86edd7"
+    ]
+   }
+  },
+  {
+   "key": "dosovitskiy2021image",
+   "arxiv": "2010.11929",
+   "expect": "16x16 words",
+   "year": 2021,
+   "alt_years": [
+    2020
+   ],
+   "venue": [
+    "Learning Representations",
+    "ICLR",
+    "arXiv"
+   ],
+   "field": "cv",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://iclr.cc/virtual/2021/poster/3013",
+     "https://mlanthology.org/iclr/2021/dosovitskiy2021iclr-image"
+    ]
+   }
+  },
+  {
+   "key": "sutskever2013training",
+   "manual": {
+    "title": "Training Recurrent Neural Networks",
+    "authors": [
+     "Sutskever"
+    ],
+    "year": 2013,
+    "venue": [
+     "University of Toronto"
+    ],
+    "type": "phdthesis",
+    "authors_full": [
+     "Ilya Sutskever"
+    ]
+   },
+   "field": "thesis",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://www.cs.utoronto.ca/~ilya/pubs/ilya_sutskever_phd_thesis.pdf",
+     "https://proquest.com/docview/1501655550"
+    ]
+   }
+  },
+  {
+   "key": "fielding1999rfc2616",
+   "manual": {
+    "title": "Hypertext Transfer Protocol -- HTTP/1.1",
+    "authors": [
+     "Fielding",
+     "Gettys",
+     "Mogul",
+     "Nielsen",
+     "Masinter",
+     "Leach",
+     "Berners-Lee"
+    ],
+    "year": 1999,
+    "venue": [
+     "RFC",
+     "Request for Comments",
+     "IETF",
+     "RFC Editor"
+    ],
+    "type": "misc",
+    "authors_full": [
+     "Roy T. Fielding",
+     "Jim Gettys",
+     "Jeffrey C. Mogul",
+     "Henrik Frystyk Nielsen",
+     "Larry Masinter",
+     "Paul J. Leach",
+     "Tim Berners-Lee"
+    ],
+    "doi": "10.17487/RFC2616"
+   },
+   "field": "standard",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://www.rfc-editor.org/info/rfc2616",
+     "https://www.rfc-editor.org/rfc/rfc2616.txt"
+    ]
+   },
+   "author_aliases": [
+    "Frystyk"
+   ]
+  },
+  {
+   "key": "rombach2022high",
+   "doi": "10.1109/CVPR52688.2022.01042",
+   "expect": "latent diffusion",
+   "venue": [
+    "Computer Vision and Pattern Recognition",
+    "CVPR"
+   ],
+   "field": "cv"
+  },
+  {
+   "key": "raffel2020exploring",
+   "manual": {
+    "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+    "authors": [
+     "Raffel",
+     "Shazeer",
+     "Roberts",
+     "Lee",
+     "Narang",
+     "Matena",
+     "Zhou",
+     "Li",
+     "Liu"
+    ],
+    "year": 2020,
+    "venue": [
+     "Journal of Machine Learning Research",
+     "JMLR"
+    ],
+    "type": "article",
+    "authors_full": [
+     "Colin Raffel",
+     "Noam Shazeer",
+     "Adam Roberts",
+     "Katherine Lee",
+     "Sharan Narang",
+     "Michael Matena",
+     "Yanqi Zhou",
+     "Wei Li",
+     "Peter J. Liu"
+    ]
+   },
+   "field": "nlp",
+   "verified": {
+    "by": "independent web check",
+    "evidence": [
+     "https://www.jmlr.org/papers/v21/20-074.html",
+     "https://www.jmlr.org/papers/volume21/20-074/20-074.pdf"
+    ]
+   }
+  }
+ ]
+}

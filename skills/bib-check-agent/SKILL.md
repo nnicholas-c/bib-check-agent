@@ -4,7 +4,7 @@ description: Checks every entry in a LaTeX .bib file against Semantic Scholar, D
 license: MIT
 compatibility: Needs Python 3 with the packages in scripts/requirements.txt, and outbound HTTPS to api.semanticscholar.org, api.crossref.org, export.arxiv.org, arxiv.org, doi.org, data.crosscite.org, sparql.dblp.org and api.openalex.org. The parallel workflow needs Claude Code; any other agent follows references/procedure.md.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 allowed-tools: 'Read Edit Write Glob Grep WebSearch WebFetch Workflow Bash(python3 "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(python "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(py -3 "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(uv run "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash("${CLAUDE_SKILL_DIR}/.venv/bin/python" "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash("${CLAUDE_SKILL_DIR}/.venv/Scripts/python.exe" "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(python3 -m venv "${CLAUDE_SKILL_DIR}/.venv") Bash(python -m venv "${CLAUDE_SKILL_DIR}/.venv") Bash(py -3 -m venv "${CLAUDE_SKILL_DIR}/.venv") Bash("${CLAUDE_SKILL_DIR}/.venv/bin/python" -m pip install -r "${CLAUDE_SKILL_DIR}/scripts/requirements.txt") Bash("${CLAUDE_SKILL_DIR}/.venv/Scripts/python.exe" -m pip install -r "${CLAUDE_SKILL_DIR}/scripts/requirements.txt") Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git ls-files *) Bash(cp *) Bash(latexmk *) Bash(pdflatex *) Bash(xelatex *) Bash(lualatex *) Bash(bibtex *) Bash(biber *)'
 ---
 
@@ -39,9 +39,9 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" FILE.bib --scholar
 
 The checker writes `FILE.verified.bib` and `FILE.report.md`. In the verified copy, confirmed entries already have clean BibTeX, and flagged entries keep their original text under `% [verify_bib]` comment lines. The report's "All entries" table gives each key's status:
 
-- OK: confirmed.
+- OK: confirmed by at least two independent databases that agree with each other. The report's "Confirmed by" column names them.
 - WEB: a website or software entry whose link was checked.
-- CHECK: a real paper with a wrong detail.
+- CHECK: a real paper with a wrong detail, or an entry only one database confirms.
 - NOT FOUND: no database had it.
 - UNCHECKED: the entry could not be parsed.
 
