@@ -33,7 +33,7 @@ You need Python 3 and an internet connection. The first time it runs, the skill 
 
 ## Install
 
-Every route installs the same `skills/bib-check-agent/` folder.
+Every route installs the same `skills/bib-check-agent/` folder. If Claude Code's `/plugin marketplace add` fails with an SSH host key error, use the HTTPS URL instead: `/plugin marketplace add https://github.com/nnicholas-c/bib-check-agent.git`.
 
 | Agent | Install |
 |---|---|
