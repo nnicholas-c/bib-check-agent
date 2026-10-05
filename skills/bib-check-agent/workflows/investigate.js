@@ -11,11 +11,12 @@ export const meta = {
   ],
 }
 
-// args (built by SKILL.md step 2):
+// args (built by SKILL.md step 3):
 //   project, bib, report, verified, checker  strings (absolute paths; checker is the command prefix for verify_bib.py)
 //   flagged     keys whose status is CHECK, NOT FOUND or UNCHECKED
 //   ok          keys whose status is OK or WEB
 //   duplicates  groups of keys the report says are the same paper, e.g. [["a", "b"]]
+//   scholar     what the main session saw in Google Scholar, searched with the user, per key (optional)
 //   apply       false to research only and leave every file alone (default: apply)
 const A = args || {}
 for (const k of ['project', 'bib', 'report', 'verified', 'checker']) {
@@ -29,6 +30,15 @@ const keyList = name => {
 const flagged = keyList('flagged')
 const ok = keyList('ok')
 const groups = keyList('duplicates').filter(g => Array.isArray(g) && g.length > 1)
+if (A.scholar != null && (typeof A.scholar !== 'object' || Array.isArray(A.scholar))) {
+  throw new Error('args.scholar must be an object of key -> what Google Scholar showed (see SKILL.md step 3)')
+}
+const scholar = Object.assign(Object.create(null), A.scholar || {})
+const scholarText = key => {
+  const v = scholar[key]
+  const t = v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v)
+  return /^\s*(not searched\.?)?\s*$/i.test(t) ? '' : t
+}
 const BATCH = 8 // confirmed entries per context-check agent
 const DECISIONS = A.bib.replace(/\.bib$/i, '') + '.decisions.md'
 const DECISIONS_NAME = DECISIONS.split(/[\\/]/).pop()
@@ -38,7 +48,7 @@ const BIB_DIR = A.bib.replace(/[\\/][^\\/]*$/, '')
 // Shared prompt text
 // ---------------------------------------------------------------------------------------
 
-const FILES = `Files. Read them, but do not edit, create, move or delete any file: you only report back, and the main session applies the result.
+const FILES = `Files. Read them, but do not edit, create, move or delete any file, not even a temporary one: you only report back, and the main session applies the result. Read an API's answer straight from the command's output (curl without -o, or WebFetch), never by saving it.
 - Original bibliography: ${A.bib}
 - Checked copy, where confirmed entries already have clean BibTeX: ${A.verified}
 - Checker report: ${A.report}
@@ -47,15 +57,21 @@ const FILES = `Files. Read them, but do not edit, create, move or delete any fil
 const CITES = `To find where a key is cited, Grep the .tex files for the key, then read the surrounding text. Cite commands vary (\\cite, \\citep, \\citet, \\citeauthor, \\parencite, \\textcite, \\autocite, \\footcite, \\nocite and others) and can hold several keys, as in \\citep{a,b}. Record each citing sentence in full.`
 
 const EVIDENCE = `Evidence rules. Follow them exactly; they are why anyone can trust the result.
-- A source counts as real only if you opened a page that shows it: a DOI landing page, publisher page, arXiv abstract page, OpenReview, ACL Anthology, Semantic Scholar, Google Scholar, a library catalog, or an author's page. A search-result snippet alone is not enough. dblp.org pages currently show a bot check; for structured lookups use the Semantic Scholar API (https://api.semanticscholar.org/graph/v1/paper/search?query=...&fields=title,authors,year,venue,externalIds,abstract) or Crossref (https://api.crossref.org/works?query.bibliographic=...). Semantic Scholar rate-limits; on HTTP 429 wait a few seconds and retry, or use another source.
-- Confirm every real source in at least two independent places before relying on it: for example the publisher or DOI page plus DBLP, Semantic Scholar, OpenAlex or Google Scholar. Check that the title, authors, year and venue agree between them. If they disagree, settle it from the publisher's own page and say so in the reason. Google Scholar counts when you can open it; it often blocks automated access, and you must never try to get around a CAPTCHA. The checker's --search shows several databases' records side by side, which makes this quick.
+- A source counts as real only if you opened a page that shows it: a DOI landing page, publisher page, arXiv abstract page, OpenReview, ACL Anthology, Semantic Scholar, a library catalog, or an author's page. A search-result snippet alone is not enough. A Google Scholar listing is a lead, not a source: count the work's own page it leads you to (publisher, DOI, repository or author page). A [CITATION] item never counts and is never a find. It has no page, and it only shows that other papers cite that title, which happens to invented references too. dblp.org pages currently show a bot check; for structured lookups use the Semantic Scholar API (https://api.semanticscholar.org/graph/v1/paper/search?query=...&fields=title,authors,year,venue,externalIds,abstract), Crossref (https://api.crossref.org/works?query.bibliographic=...), Europe PMC for biomedical work (https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=TITLE:(...)&format=json), OpenReview for ICLR, NeurIPS, TMLR and similar venues, including rejected and withdrawn submissions (https://api2.openreview.net/notes/search?term=...&content=title&source=forum), DataCite for theses, software and datasets (https://api.datacite.org/dois?query=...), Open Library for books (https://openlibrary.org/search.json?q=...) or CORE for repository copies and theses (https://api.core.ac.uk/v3/search/works/?q=...). Semantic Scholar rate-limits; on HTTP 429 wait a few seconds and retry, or use another source.
+- Confirm every real source in at least two independent places before relying on it: for example the publisher or DOI page plus DBLP, Semantic Scholar, OpenAlex or Europe PMC. Check that the title, authors, year and venue agree between them. If they disagree, settle it from the publisher's own page and say so in the reason. Never try to get around a CAPTCHA or other bot check on Google Scholar or any other site: if one appears, stop using that site and say so. The checker's --search shows several databases' records side by side, which makes this quick.
 - Take BibTeX only from a source you opened, never from memory. A reference reconstructed from memory is exactly the error this check exists to catch. Get it with the checker, using the Bash tool; it prints the official export, cleaned and under the key you give:
     ${A.checker} --bibtex <DOI, arXiv ID, or URL of a .bib export> --key <citation key>
   It accepts any DOI, any arXiv ID, and .bib export URLs such as https://aclanthology.org/N19-1423.bib. When no export exists (books, theses, reports, web pages), write the entry from the fields shown on the page you opened, and say so in bibtex_source.
-- Without a working web-search tool, research with the checker instead: ${A.checker} --search "<title, or title words plus an author's surname>" queries OpenAlex, Semantic Scholar, Crossref and arXiv and prints candidates with abstracts. A record it prints counts as a source you opened. Try several queries before concluding a work does not exist.
+- Without a working web-search tool, research with the checker instead: ${A.checker} --search "<title, or title words plus an author's surname>" queries OpenAlex, Semantic Scholar, Crossref, arXiv, Europe PMC, DataCite, OpenReview and Open Library and prints candidates with abstracts. A record it prints counts as a source you opened. Try several queries before concluding a work does not exist.
 - Cite the published version (conference, journal, book) when one exists, not the arXiv preprint. arXiv's own BibTeX (arxiv.org/bibtex/...) gives the year of the latest revision, often years after publication; the checker's --bibtex corrects that to the first version's year, but fetching the page yourself does not.
 - Keep the original citation key exactly.
-- Use every tool this session offers that helps: WebSearch and WebFetch, and, if ToolSearch shows them, a browser for Google Scholar or publisher pages, a PDF reader, or a reference manager such as Zotero. If a tool is denied, carry on with the others.`
+- Use every tool this session offers that helps: WebSearch and WebFetch, and, if ToolSearch shows them, a PDF reader or a reference manager such as Zotero. Don't use the browser tools (mcp__Claude_Browser__*, mcp__claude-in-chrome__*): the user and other agents share that browser. If a tool is denied, carry on with the others.`
+
+// What the main session saw in Google Scholar, searched with the user in a browser they watch.
+const scholarNote = key => scholarText(key)
+  ? `Google Scholar, searched by the main session in the user's browser: ${scholarText(key)}
+A Google Scholar listing is a lead, not a source: count the work's own page it leads you to (publisher, DOI, repository or author page). A [CITATION] item never counts and is never a find. It has no page, and it only shows that other papers cite that title, which happens to invented references too. When Google Scholar matched no article, that is evidence that the work may not exist.`
+  : `Nobody searched Google Scholar for this entry yet. You may open https://scholar.google.com/scholar?hl=en&q="<exact title>" with WebFetch. If it shows a CAPTCHA, an "unusual traffic" page or a google.com/sorry address, stop using Google Scholar and set google_scholar to "blocked". Never try to get around it. A Google Scholar listing is a lead, not a source: count the work's own page it leads you to (publisher, DOI, repository or author page). A [CITATION] item never counts and is never a find. It has no page, and it only shows that other papers cite that title, which happens to invented references too.`
 
 // ---------------------------------------------------------------------------------------
 // Schemas
@@ -77,8 +93,9 @@ const DECISION = {
     supports_claim: { type: 'string', enum: ['yes', 'partly', 'no', 'uncited'], description: 'Does the source you settled on support the citing sentences? For FABRICATED, "no".' },
     rewording: str('A suggested rewording for a citing sentence the source does not fully support. Empty otherwise.'),
     searched: str('For FABRICATED: where you searched, and the closest real papers you rejected and why. Empty otherwise.'),
+    google_scholar: { type: 'string', enum: ['shows it', 'does not show it', 'blocked', 'not searched'], description: 'What Google Scholar showed for this work, from the main session\'s search or your own.' },
   },
-  required: ['key', 'decision', 'reason', 'evidence_urls', 'bibtex', 'bibtex_source', 'citing_sentences', 'supports_claim', 'rewording', 'searched'],
+  required: ['key', 'decision', 'reason', 'evidence_urls', 'bibtex', 'bibtex_source', 'citing_sentences', 'supports_claim', 'rewording', 'searched', 'google_scholar'],
 }
 
 const VERDICT = {
@@ -158,6 +175,8 @@ ${FILES}
    - UNRESOLVED: you could not confirm any of the above. The entry is left as it is, flagged for the author.
 4. Judge whether the source you settled on supports each citing sentence (supports_claim). If it only partly does, or does not, suggest a rewording. Never edit the sentences yourself.
 
+${scholarNote(key)}
+
 ${EVIDENCE}
 ${objection ? `
 An independent reviewer disputed an earlier decision on this entry:
@@ -192,9 +211,11 @@ ${CHECKS[d.decision]}
 ${fields}- Every evidence URL really shows what the investigator says. Open them.
 - The supports_claim judgment and any rewording are fair, given what the source says.
 
+${scholarNote(d.key)}
+
 ${EVIDENCE}
 
-Set upheld to true only if you confirmed all of this with pages you opened. If you cannot confirm something, set upheld to false and say what. Formatting choices such as braces, field order, or abbreviated versus full venue names are not problems; wrong or missing authors, or a wrong title, year, venue, volume, pages or DOI, are.`
+Set upheld to true only if you confirmed all of this with pages you opened. If you cannot confirm something, set upheld to false and say what. Formatting choices such as braces, field order, or abbreviated versus full venue names are not problems; wrong or missing authors, or a wrong title, year, venue, volume, pages or DOI, are. Two more things are not problems: an evidence URL you could not open because of a rate limit or bot check, when other pages you opened show the same facts, and a slip in how bibtex_source describes an edit, when the BibTeX itself is right.`
 }
 
 const HUNTS = [
@@ -209,6 +230,8 @@ Entry key: ${d.key}. Read the entry in ${A.bib}; the checker's notes on it are i
 Where the investigator searched: ${d.searched || '(not stated)'}
 
 Your search strategy: ${hunt.how}
+
+${scholarNote(d.key)}
 
 Set found to true only if you opened a page showing a real work that is plausibly the one this entry meant to cite (the same work, possibly with garbled details), and give that page's URL. A different paper on a similar topic is not a find.`
 }
@@ -312,7 +335,7 @@ ${APPLY_RULES}
 3. Copy the edited checked copy over ${A.bib} with cp.
 4. Check for LaTeX by running latexmk -v (or pdflatex --version). If it is installed, compile the main .tex file from its folder (for example latexmk -pdf main.tex) and check the log for undefined citations and BibTeX errors. Fix any that your edits caused. If the command is not found, say that no LaTeX is installed.
 5. Run the checker on the replaced file: ${A.checker} "${A.bib}". This rewrites the checked copy and the report, which is expected. Every entry should come back OK or WEB, except FABRICATED, UNRESOLVED and KEPT entries, which it flags again by design, and FOUND sources the databases don't cover. If it flags an entry you wrote, compare that entry with the decision's bibtex and fix any copying slip in ${A.bib}. Don't change an entry just to satisfy the checker.
-6. Write the decisions file. If it already exists from an earlier run, put this run's results at the top under a new heading and keep the earlier runs below. Start with a "Needs your attention" section listing FABRICATED entries, UNRESOLVED entries with both sides' arguments, MISMATCH citations with each citing sentence and the suggested rewording or substitute, and any missing items (keys no agent covered, by job). Then give one line per entry you changed: key, decision, a one-sentence reason, and the evidence URL. End with merges, groups kept apart and why, uncited keys, the backups, and the final checker counts.
+6. Write the decisions file. If it already exists from an earlier run, put this run's results at the top under a new heading and keep the earlier runs below. Start with a "Needs your attention" section listing FABRICATED entries, SUBSTITUTED entries (each now cites a different paper from the one the author wrote: give both, and the sentence it supports), UNRESOLVED entries with both sides' arguments, the Google Scholar link from the report for each of those whose google_scholar is "blocked" or "not searched" (so the author can check it there), MISMATCH citations with each citing sentence and the suggested rewording or substitute, and any missing items (keys no agent covered, by job). Then give one line per entry you changed: key, decision, a one-sentence reason, and the evidence URL. End with merges, groups kept apart and why, uncited keys, the backups, and the final checker counts.
 
 Return what you did.`
 }
@@ -335,7 +358,8 @@ Check each of these, and list every failure in problems:
 - No "% [verify_bib]" lines remain except above UNRESOLVED entries. Entries the report marked OK may have been replaced with clean BibTeX by the checker, which is expected.
 - Each retired key's entry is gone, and no .tex file still cites a retired key.
 - Compared with the originals, the .tex files differ only in citation keys inside cite commands.
-- The decisions file exists and lists every FABRICATED, UNRESOLVED and MISMATCH item.
+- No other new files are in the project folder: only the backups and the decisions file. For a git project, git status --porcelain lists untracked files; otherwise look for downloads or scratch files such as *.json or *.html that the paper doesn't use. Name each one in problems, and don't delete anything.
+- The decisions file exists and starts with a "Needs your attention" section that lists every FABRICATED, SUBSTITUTED, UNRESOLVED and MISMATCH item.
 
 Set upheld to true only if everything checks out.`
 }

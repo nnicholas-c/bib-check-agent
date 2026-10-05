@@ -3547,7 +3547,10 @@
   "venue": [
    "Nature"
   ],
-  "field": "bio"
+  "field": "bio",
+  "alt_first_authors": [
+   "Lander"
+  ]
  },
  "lowry1951protein": {
   "title": "PROTEIN MEASUREMENT WITH THE FOLIN PHENOL REAGENT",

@@ -123,6 +123,8 @@ wrong_year.cands = [cand("Semantic Scholar", 2016), cand("Crossref", 2016)]
 assert vb.version_conflict(wrong_year, {"title": TITLE, "author": "Kaiming He", "booktitle": "CVPR", "year": "2016"}) is None  # a real fix
 book = vb.make_ref("b", "book", "", {"title": "Deep Learning", "author": "Ian Goodfellow", "publisher": "MIT Press", "year": "2016"})
 assert "no publisher" in vb.version_conflict(book, {"title": "Deep Learning", "author": "Ian Goodfellow", "year": "2016"})
+chapter = vb.make_ref("c", "incollection", "", {"title": "Prospect Theory", "author": "Daniel Kahneman", "booktitle": "Choices, Values, and Frames", "year": "2000"})
+assert "no journal or booktitle" in vb.version_conflict(chapter, {"title": "Prospect Theory", "author": "Daniel Kahneman", "year": "2000"})
 assert "doi" not in vb.tidy("article", {"title": "T", "doi": "10.5555/2627435.2670313"})[1]  # ACM IDs aren't real DOIs
 
 # Two planted errors the accuracy benchmark (tests/benchmark) caught getting through.
@@ -147,6 +149,83 @@ assert vb.same_venue("Proc. Natl. Acad. Sci. U.S.A.", "Proceedings of the Nation
 assert vb.same_venue("PNAS", "Proceedings of the National Academy of Sciences") and vb.same_venue("The Lancet", "Lancet")
 assert vb._name_hit("{International Human Genome Sequencing Consortium}", vb.surname_keys("International Human Genome Sequencing Consortium"))
 assert not vb.same_venue("Nature", "Nature Communications") and not vb.same_venue("American Economic Review", "Econometrica")
+
+# The extra databases: canned answers shaped like the live ones, through a stand-in for Http
+class Canned:
+    def __init__(self, answers):
+        self.answers, self.down, self.asked = answers, {}, []
+
+    def json(self, url, params=None, **kw):
+        self.asked.append(url)
+        return next((v for k, v in self.answers.items() if k in url), (404, None))
+
+    def get(self, url, params=None, **kw):
+        st, j = self.json(url, params)
+        return st, j if isinstance(j, str) else ""
+
+
+assert vb.title_sim("RETRACTED: Long term toxicity of a Roundup herbicide", "Long term toxicity of a Roundup herbicide") == 100
+fate = vb.openreview_fate
+assert fate("Submitted to ICLR 2025", "ICLR.cc/2025/Conference/Rejected_Submission", "") == "rejected"
+assert fate("Submitted to ICLR 2023", "ICLR.cc/2023/Conference", "") == "rejected"  # v1 keeps the accepted venueid
+assert fate("", "", "ICLR.cc/2022/Conference/-/Withdrawn_Submission") == "withdrawn"
+assert fate("MTI-LLM @ NeurIPS 2025 Poster", "NeurIPS.cc/2025/Workshop/MTI-LLM", "") == "workshop"  # never "workshop" in the venue
+assert fate("Under review for TMLR", "TMLR/Under_Review", "") == "under review"
+assert fate("Decision pending for TMLR", "TMLR/Decision_Pending", "") == "under review"
+assert fate("ICLR 2021 Oral", "ICLR.cc/2021/Conference", "") == "accepted"
+note = lambda venue, vid, authors=("Ann Lee",): {"id": "x", "forum": "x", "invitations": [""], "content": {
+    "title": {"value": "Estimating Empowerment"}, "venue": {"value": venue}, "venueid": {"value": vid}, "authors": {"value": list(authors)}}}
+got, st = vb.openreview_search(Canned({"api2.openreview.net": (200, {"notes": [
+    note("MTI-LLM @ NeurIPS 2025 Poster", "NeurIPS.cc/2025/Workshop/MTI-LLM"), note("ICLR 2026 Poster", "ICLR.cc/2026/Conference", ["Anonymous"])]})}),
+    "Estimating Empowerment", v1=False)
+assert st == 200 and [(c.venue, c.preprint, c.extra["fate"]) for c in got] == [("", True, "workshop")]  # no venue; the anonymous one is dropped
+assert vb.openreview_search(Canned({"api2.openreview.net": (500, None), "api.openreview.net": (200, {"notes": []})}), "Estimating Empowerment")[1] == 500
+
+# A rejection is flagged only on the same track and year, and only an edition-dated record at that venue and year overrides it
+EMP = "Estimating Empowerment"
+emp = lambda booktitle: vb.make_ref("e", "inproceedings", "", {"title": EMP, "author": "Ann Lee and Bo Kim", "booktitle": booktitle, "year": "2025"})
+rej = vb.Cand("OpenReview", EMP, ["Ann Lee", "Bo Kim"], 2025, "", url="u", preprint=True,
+              extra={"fate": "rejected", "where": "Submitted to ICLR 2025 ICLR.cc/2025/Conference/Rejected_Submission", "workshop": False})
+arx = vb.Cand("arXiv", EMP, ["Ann Lee", "Bo Kim"], 2024, "arXiv", preprint=True)
+for extra_cands, booktitle, flagged in (([], "ICLR", True),
+                                        ([vb.Cand("DBLP", EMP, ["Ann Lee", "Bo Kim"], 2026, "ICLR 2026")], "ICLR", True),  # another year's ICLR
+                                        ([vb.Cand("DBLP", EMP, ["Ann Lee", "Bo Kim"], 2025, "ICLR 2025")], "ICLR", False),
+                                        ([], "ICLR 2025 Workshop on Agents", False)):  # a workshop paper, not the main track
+    r = emp(booktitle); r.cands = [rej, arx] + extra_cands
+    vb.judge(r)
+    assert any("OpenReview shows" in p for p in r.problems) == flagged, (booktitle, extra_cands, r.problems)
+
+# Europe PMC: letters, notices and arXiv copies that repeat a title are not the paper; a retraction counts only for the cited version
+GM = "Long term toxicity of a Roundup herbicide and a Roundup-tolerant genetically modified maize"
+rec = lambda i, types, year, **kw: {"id": i, "source": kw.get("source", "MED"), "title": kw.get("title", GM), "pubYear": str(year),
+                                     "pubTypeList": {"pubType": types}, "authorList": {"author": [{"firstName": "Gilles", "lastName": "Seralini"}]},
+                                     "journalInfo": {"journal": {"title": kw.get("journal", "Food Chem Toxicol")}}, "doi": kw.get("doi"),
+                                     "bookOrReportDetails": {"publisher": kw.get("publisher", "")}}
+got, _ = vb.europepmc_search(Canned({"ebi.ac.uk": (200, {"hitCount": 5, "resultList": {"result": [
+    rec("1", ["Journal Article", "Retracted Publication"], 2012, doi="10.1016/j.fct.2012.08.005"),
+    rec("2", ["Letter", "Comment"], 2013), rec("3", ["Retraction Notice"], 2013, title="Retraction notice to " + GM),
+    rec("4", ["Preprint"], 2012, source="PPR", publisher="arXiv")]}})}), GM, "Seralini")
+assert [(c.year, c.extra["retracted"]) for c in got] == [(2012, True)], [(c.year, c.title) for c in got]
+gm = lambda year, doi=None: vb.make_ref("s", "article", "", {"title": GM, "author": "Gilles Seralini", "journal": "Food Chem Toxicol", "year": year, **({"doi": doi} if doi else {})})
+r = gm("2014"); r.cands = got + [vb.Cand("Crossref", GM, ["Gilles Seralini"], 2012, "Food and Chemical Toxicology")]
+vb.judge(r)
+assert any("the year differs (yours 2014, real 2012)" in p for p in r.problems), r.problems  # a 2013 letter no longer hides it
+r = gm("2014", doi="10.1016/j.fct.2014.99.999"); r.cands = list(got)  # the republished version, with its own DOI
+vb.judge(r)
+assert not any("retracted" in p for p in r.problems) and any("retracted version" in n for n in r.notes)
+
+# A database that fails is never listed as searched, so NOT FOUND names only those that answered
+r = vb.make_ref("x", "article", "", {"title": "Some Title Nobody Wrote", "author": "Ann Lee"})
+vb.lookup_basic(Canned({"semanticscholar": (200, {"data": []}), "crossref": (503, None), "openalex": (200, {"results": []})}), r)
+assert r.searched == ["Semantic Scholar", "OpenAlex"] and r.errors == ["Crossref did not answer"], (r.searched, r.errors)
+answered = set()
+real_sparql, vb.sparql = vb.sparql, lambda http, q: None  # dblp down
+assert vb.dblp_find(None, [(0, "Some Title Nobody Wrote")], answered) == [] and not answered
+vb.sparql = real_sparql
+
+# A rejected submission is not "the version the entry cites", so it can't block the right BibTeX
+r = emp("ICLR"); r.cands = [rej]
+assert vb.version_conflict(r, {"title": EMP, "author": "Ann Lee", "booktitle": "ICLR", "year": "2027"}) is None
 
 # An entry with no comma after its key is still found, so it can be reported as unparseable
 assert [b[2] for b in vb.scan_bib("@article{nokey\n title={X}}\n@misc{ok, title={Y}}") if b[0] == "entry"] == ["nokey", "ok"]

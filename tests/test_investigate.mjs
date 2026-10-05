@@ -123,6 +123,23 @@ assert.equal(out.apply_error, 'token budget spent'); assert.equal(out.decisions.
 assert.match(out.status, /^not applied/)
 assert.deepEqual(Object.keys(out).slice(0, 3), ['counts', 'status', 'apply_error'])  // summary fields survive truncation
 
+// Google Scholar results gathered with the user reach every agent judging that entry, and only that entry
+h = harness(); const real1 = h.agent, prompts = {}
+await run({ ...ARGS, apply: false, scholar: { fake: 'no match: "did not match any articles"' } },
+  (p, o) => { prompts[o.label] = p; return real1(p, o) }, h.parallel, () => {})
+for (const label of ['investigate:fake', 'find-by-title:fake', 'find-by-authors:fake'])
+  assert.match(prompts[label], /searched by the main session in the user's browser: no match/, label)
+assert.match(prompts['investigate:fixed'], /Nobody searched Google Scholar/)
+assert.match(prompts['verify:fixed'], /Never try to get around it/)
+assert.match(prompts['investigate:fake'], /A \[CITATION\] item never counts/)                   // a listing is a lead, a stub never a source
+assert.match(prompts['investigate:fixed'], /Don't use the browser tools/)                          // the user's browser stays with the main session
+h = harness(); const real2 = h.agent, prompts2 = {}
+await run({ ...ARGS, apply: false, scholar: { fake: 'not searched', fixed: { title: 'X' }, constructor: 'junk' } },
+  (p, o) => { prompts2[o.label] = p; return real2(p, o) }, h.parallel, () => {})
+assert.match(prompts2['investigate:fake'], /Nobody searched Google Scholar/)                      // "not searched" is not a search
+assert.match(prompts2['investigate:fixed'], /user's browser: \{"title":"X"\}/)                     // non-text values are shown as JSON
+await assert.rejects(run({ ...ARGS, scholar: ['fake'] }, h.agent, h.parallel, () => {}), /args.scholar must be an object/)
+
 // Bad input fails loudly instead of checking nothing
 await assert.rejects(run({ ...ARGS, flagged: 'fixed,fake' }, h.agent, h.parallel, () => {}), /must be an array/)
 await assert.rejects(run({ ...ARGS, bib: '' }, h.agent, h.parallel, () => {}), /args.bib is required/)

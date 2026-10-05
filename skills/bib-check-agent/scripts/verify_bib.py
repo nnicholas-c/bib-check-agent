@@ -7,8 +7,9 @@
 verify_bib.py - check every entry of a .bib file against real paper databases.
 Part of Bib Check Agent (https://github.com/nnicholas-c/bib-check-agent), MIT licensed.
 
-For each reference the script looks the paper up in Semantic Scholar, DBLP, Crossref and
-arXiv (and optionally Google Scholar through SerpApi), decides whether the entry is real and
+For each reference the script looks the paper up in Semantic Scholar, DBLP, Crossref, OpenAlex,
+Europe PMC and arXiv, plus DataCite, Open Library, OpenReview and CORE for entries the others
+leave short of two confirmations, decides whether the entry is real and
 correct, and writes two files next to your .bib:
 
   <name>.verified.bib  your file, where every confirmed entry is replaced by clean BibTeX
@@ -28,12 +29,14 @@ Fetch:    python verify_bib.py --bibtex 10.18653/v1/N19-1423 --key devlin2019ber
                                                     the same way and under the key you give)
 Search:   python verify_bib.py --search "dropout prevents co-adaptation Srivastava"
                                                    (list candidate papers with abstracts from
-                                                    OpenAlex, Semantic Scholar, Crossref and arXiv)
+                                                    OpenAlex, Semantic Scholar, Crossref, arXiv,
+                                                    Europe PMC, DataCite, OpenReview and Open Library)
 
 Optional environment variables
   S2_API_KEY        free Semantic Scholar key, makes runs faster and steadier
-  SERPAPI_KEY       needed for --scholar and --scholar-all (Google Scholar has no official API)
-  VERIFY_BIB_EMAIL  your email, sent to Crossref so you get their faster "polite" rate limit
+  OPENALEX_API_KEY  free OpenAlex key, for more than OpenAlex's small daily allowance
+  CORE_API_KEY      free CORE key, for more than 100 CORE searches a day
+  VERIFY_BIB_EMAIL  your email, sent to Crossref and OpenAlex for their faster "polite" rate limits
 
 Your original .bib file is never modified. Lookups are cached in .verify_bib_cache.json, so a
 second run is fast.
@@ -67,8 +70,8 @@ except ImportError:
     MISSING = 'Missing packages. Run:  pip install requests rapidfuzz "bibtexparser<2"'
 
 S2_KEY = os.environ.get("S2_API_KEY")
-SERPAPI_KEY = os.environ.get("SERPAPI_KEY")
 OPENALEX_KEY = os.environ.get("OPENALEX_API_KEY")
+CORE_KEY = os.environ.get("CORE_API_KEY")
 
 TITLE_OK = 95     # title similarity (0 to 100) needed to call a title correct
 TITLE_CLOSE = 80  # below this, a search result is treated as a different paper
@@ -81,9 +84,13 @@ MIN_INTERVAL = {
     "export.arxiv.org": 3.0,
     "arxiv.org": 3.0,
     "sparql.dblp.org": 10.0,  # dblp robots.txt asks for a 10 second crawl delay
-    "serpapi.com": 1.0,
     "api.openalex.org": 0.2,
-    "scholar.googleusercontent.com": 2.0,
+    "www.ebi.ac.uk": 0.3,        # Europe PMC allows 10 a second
+    "api.datacite.org": 0.7,     # 500 per 5 minutes without an account
+    "openlibrary.org": 1.0,      # 1 a second for scripts that send no email
+    "api2.openreview.net": 1.0,
+    "api.openreview.net": 12.5,  # the older OpenReview API allows 5 searches a minute
+    "api.core.ac.uk": 6.5,       # 10 a minute and 100 a day without a key
 }
 
 NOISE_FIELDS = {"timestamp", "biburl", "bibsource", "collection", "abstract", "keywords",
@@ -121,7 +128,8 @@ VENUES = [
 MONTHS = {m[:3].lower(): m for m in ("January February March April May June July August September "
                                       "October November December").split()}
 # When two records match equally well, show the more carefully curated one.
-SOURCE_RANK = {"DBLP": 3, "Crossref": 2, "Semantic Scholar": 1, "OpenAlex": 1, "arXiv": 1, "Google Scholar": 0}
+SOURCE_RANK = {"DBLP": 3, "Crossref": 2, "Europe PMC": 2, "Semantic Scholar": 1, "OpenAlex": 1, "arXiv": 1,
+               "OpenReview": 1, "DataCite": 1, "CORE": 0, "Open Library": 0}
 WEB_TYPES = {"misc", "online", "software", "manual", "electronic", "www", "webpage", "dataset"}
 
 STOPWORDS = set("a an the of for and in on to with by from at as is are be via using towards "
@@ -135,8 +143,8 @@ STOPWORDS = set("a an the of for and in on to with by from at as is are be via u
 class Http:
     def __init__(self, cache_file, use_cache, email):
         self.session = requests.Session()
-        ua = "verify-bib/1.0 (reference checker for a personal .bib file)"
-        self.session.headers["User-Agent"] = ua  # the email goes only to Crossref, as its mailto parameter
+        ua = "bib-check-agent (https://github.com/nnicholas-c/bib-check-agent)"
+        self.session.headers["User-Agent"] = ua  # the email goes only to Crossref and OpenAlex, as their mailto parameter
         self.email = email
         self.cache_file = cache_file
         self.use_cache = use_cache
@@ -207,6 +215,10 @@ class Http:
                 time.sleep(min(60.0, max(retry_after, 2.0 ** (attempt + 1))))
                 continue
             break
+        if status in (0, 401, 403, 407) and host not in CORE and host not in self.down:
+            # Blocked or offline after every retry. Stop asking it, and say so in the report.
+            self.down[host] = "it did not answer (blocked or offline)" if status == 0 else f"it refused access (HTTP {status})"
+            print(f"  {host}: {self.down[host]}; continuing without it.", flush=True)
         if cache and self.use_cache and status in (200, 404):
             self.cache[key] = [status, text]
             self.dirty += 1
@@ -256,8 +268,12 @@ def fold(s):
     return "".join(c for c in s if not unicodedata.combining(c)).translate(FOLD)
 
 
+RETRACTION_LABEL = re.compile(r"^\s*(retracted|withdrawn)(\s+(article|paper|publication))?\s*[:.\-]+\s*", re.I)
+
+
 def norm_title(s):
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", fold(clean_latex(s)).lower()).split())
+    s = RETRACTION_LABEL.sub("", fold(clean_latex(s)))  # "RETRACTED: <title>" names the same paper
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", s.lower()).split())
 
 
 def title_sim(a, b):
@@ -370,8 +386,6 @@ def author_check(entry_authors, cand):
     cand_names = [c for c in cand.authors if c and c not in ("...", "\u2026")]
     if not ents or not cand_names:
         return None
-    if cand.truncated_authors:  # Google Scholar shows only the first few names
-        ents = ents[: len(cand_names)]
     cand_keys = set().union(*(surname_keys(c) for c in cand_names))
     hits = [_name_hit(a, cand_keys) for a in ents]
     first_ok = _name_hit(ents[0], surname_keys(cand_names[0]))
@@ -404,7 +418,6 @@ class Cand:
     url: str = None
     bibtex: str = None
     preprint: bool = False
-    truncated_authors: bool = False
     extra: dict = field(default_factory=dict)
 
 
@@ -432,8 +445,8 @@ class Ref:
     suggestion: tuple = None   # (entrytype, fields, source)
     decision: str = ""         # auto, accept, paste, keep, fake, skip
     pasted: tuple = None
-    scholar_checked: bool = False
     confirmed_by: list = field(default_factory=list)  # databases whose record matches the entry
+    searched: list = field(default_factory=list)      # databases that answered a search for it
 
 
 ARXIV_NEW = r"(\d{4}\.\d{4,5})(?:v\d+)?"
@@ -509,7 +522,6 @@ def scan_bib(text):
             i = at + 1
             continue
         kind, opener = m.group(1).lower(), m.group(2)
-        closer = "}" if opener == "{" else ")"
         j, depth = at + m.end(), 1
         while j < n and depth:
             c = text[j]
@@ -607,8 +619,8 @@ def crossref_search(http, title, first_author):
                       params={"query.bibliographic": q[:400], "rows": 5,
                               "select": "DOI,title,subtitle,author,issued,published-print,published-online,container-title,type"})
     if st != 200 or not j:
-        return []
-    return [crossref_cand(it) for it in (j.get("message") or {}).get("items", [])]
+        return [], st
+    return [crossref_cand(it) for it in (j.get("message") or {}).get("items", [])], st
 
 
 def doi_exists(http, doi):
@@ -668,12 +680,14 @@ def sparql(http, query):
         return None
 
 
-def dblp_find(http, items):
-    """items: list of (ref index, title). Returns (ref index, dblp key) pairs with the same title."""
-    blocks = []
+def dblp_find(http, items, answered=None):
+    """items: list of (ref index, title). Returns (ref index, dblp key) pairs with the same title,
+    and adds to `answered` the ref indexes whose query got an answer."""
+    blocks, asked = [], []
     for i, t in items:
         words, n = dblp_words(t), dblp_norm(t)
         if words and len(n) >= 8:
+            asked.append(i)
             blocks.append(f'{{ BIND({i} AS ?seed) ?text ql:contains-entity ?title . '
                           f'?text ql:contains-word "{" ".join(words)}" . ?pub dblp:title ?title . '
                           f'FILTER(REPLACE(LCASE(STR(?title)), "[^a-z0-9]", "") = "{n}") }}')
@@ -681,10 +695,12 @@ def dblp_find(http, items):
         return []
     rows = sparql(http, "SELECT ?seed ?pub WHERE { " + " UNION ".join(blocks) + " }")
     if rows is not None:
+        if answered is not None:
+            answered.update(asked)
         return [(int(r["seed"]["value"]), r["pub"]["value"].replace(DBLP_REC, "")) for r in rows]
     if len(items) > 1:  # too heavy or failed: split the batch and try again
         mid = len(items) // 2
-        return dblp_find(http, items[:mid]) + dblp_find(http, items[mid:])
+        return dblp_find(http, items[:mid], answered) + dblp_find(http, items[mid:], answered)
     return []
 
 
@@ -753,52 +769,8 @@ def dblp_fields(c):
     return (btype if btype in known else "misc"), f
 
 
-# Google Scholar has no official API and blocks scripts, so it is reached through SerpApi.
-
-class ScholarOff(Exception):
-    pass
-
-
-def serpapi(http, params):
-    st, txt = http.get("https://serpapi.com/search.json", params={**params, "api_key": SERPAPI_KEY}, tries=2)
-    try:
-        j = json.loads(txt) if txt else {}
-    except ValueError:
-        j = {}
-    if st != 200 or j.get("error"):
-        msg = j.get("error") or f"HTTP {st}"
-        if "hasn't returned any results" in msg.lower():
-            return {}
-        raise ScholarOff(msg)
-    return j
-
-
-def scholar_search(http, title):
-    cands = []
-    for r in serpapi(http, {"engine": "google_scholar", "q": title, "num": 3}).get("organic_results", [])[:3]:
-        info = r.get("publication_info") or {}
-        summary = info.get("summary", "")
-        authors = [a.get("name", "") for a in info.get("authors") or []]
-        parts = summary.split(" - ")
-        if not authors and parts:
-            authors = [a.strip() for a in parts[0].split(",") if a.strip()]
-        cands.append(Cand("Google Scholar", r.get("title", ""), authors, to_year(summary),
-                          parts[1] if len(parts) >= 3 else "", url=r.get("link"),
-                          truncated_authors=True, extra={"result_id": r.get("result_id")}))
-    return cands
-
-
-def scholar_bibtex(http, result_id):
-    j = serpapi(http, {"engine": "google_scholar_cite", "q": result_id})
-    link = next((x.get("link") for x in j.get("links") or [] if x.get("name") == "BibTeX"), None)
-    if not link:
-        return None
-    st, txt = http.get(link, tries=2)
-    return txt if st == 200 and txt.lstrip().startswith("@") else None
-
-
 HOSTS = ("api.semanticscholar.org, api.crossref.org, export.arxiv.org, arxiv.org, doi.org, data.crosscite.org, "
-         "sparql.dblp.org and api.openalex.org (plus serpapi.com and scholar.googleusercontent.com with --scholar)")
+         "sparql.dblp.org and api.openalex.org")
 CORE = {"api.crossref.org": "https://api.crossref.org/works?rows=0",
         "export.arxiv.org": "https://export.arxiv.org/api/query?search_query=all:electron&max_results=0",
         "api.semanticscholar.org": "https://api.semanticscholar.org/graph/v1/paper/search?query=attention&limit=1&fields=title"}
@@ -848,29 +820,23 @@ def search_papers(http, query, n=5):
                       d.get("venue"), ext.get("DOI"), ext.get("ArXiv"), d.get("url"), d.get("abstract")))
     if st not in (200, 404):
         found.append(("Semantic Scholar", f"(no answer: HTTP {st}; retry in a few seconds)", [], None, "", None, None, None, None))
-    for c in crossref_search(http, query, "")[:n]:
+    for c in crossref_search(http, query, "")[0][:n]:
         found.append(("Crossref", c.title, c.authors, c.year, c.venue, c.doi, None, c.url, None))
     # arXiv's index drops stopwords, so ANDing one of them would match nothing
     words = [w for w in re.findall(r"\w+", clean_latex(query)) if len(w) > 2 and w.lower() not in ARXIV_STOP][:8]
     if words:
-        st, txt = http.get("https://export.arxiv.org/api/query",
-                           params={"search_query": " AND ".join(f"all:{w}" for w in words), "max_results": n})
-        try:
-            ns = {"a": "http://www.w3.org/2005/Atom"}
-            for e in ET.fromstring(txt).findall("a:entry", ns) if st == 200 else []:
-                aid = re.sub(r"v\d+$", "", e.findtext("a:id", "", ns).rsplit("/abs/", 1)[-1])
-                found.append(("arXiv", " ".join(e.findtext("a:title", "", ns).split()),
-                              [a.findtext("a:name", "", ns) for a in e.findall("a:author", ns)],
-                              to_year(e.findtext("a:published", "", ns)), "arXiv", None, aid,
-                              f"https://arxiv.org/abs/{aid}", " ".join(e.findtext("a:summary", "", ns).split())))
-        except ET.ParseError:
-            pass
-    if SERPAPI_KEY:  # Google Scholar has no official API; SerpApi is the reliable way to query it
-        try:
-            for c in scholar_search(http, query):
-                found.append(("Google Scholar", c.title, c.authors, c.year, c.venue, None, None, c.url, None))
-        except ScholarOff as e:
-            found.append(("Google Scholar", f"(no answer: {e})", [], None, "", None, None, None, None))
+        for c in _arxiv_feed(http, " AND ".join(f"all:{w}" for w in words), n)[0]:
+            found.append(("arXiv", c.title, c.authors, c.year, "arXiv", None, c.arxiv, c.url, c.extra.get("abstract")))
+    more = [("Europe PMC", lambda: europepmc_search(http, query, anywhere=True)), ("DataCite", lambda: datacite_search(http, query)),
+            ("OpenReview", lambda: openreview_search(http, query, v1=False)), ("Open Library", lambda: openlibrary_search(http, query))]
+    if CORE_KEY:  # without a key CORE allows 100 searches a day, which parallel research would use up
+        more.append(("CORE", lambda: core_search(http, query)))
+    for name, ask in more:
+        cands, st = ask()
+        if st != 200:
+            found.append((name, f"(no answer: HTTP {st})", [], None, "", None, None, None, None))
+        for c in cands[:n]:
+            found.append((name, c.title, c.authors, c.year, c.venue, c.doi, c.arxiv, c.url, c.extra.get("abstract")))
     return found
 
 
@@ -1029,7 +995,284 @@ def openalex_search(http, title, first_author):
                         [(a.get("author") or {}).get("display_name", "") for a in w.get("authorships") or []],
                         w.get("publication_year"), venue, strip_doi(w.get("doi") or "") or None, None, None, w.get("id"),
                         preprint=(w.get("type") == "preprint" or "arxiv" in venue.lower())))
-    return out
+    return out, st
+
+
+# More independent databases. Each one is asked only where it adds something, and every function
+# returns (records, status) so that a failed query is never mistaken for "not there".
+
+def _words(s):
+    """Plain lowercase words, with every character a query language treats as syntax removed and
+    accents folded, so no title can break a query or be read as an operator."""
+    s = re.sub(r"['’]s\b", "", fold(clean_latex(s or "")))  # possessives: Parkinson's -> Parkinson
+    return re.findall(r"[^\W_]+", s.lower())
+
+
+def _surname(name):
+    w = _words(name)
+    return w[-1] if w else ""
+
+
+EPMC_NOTICES = {"retraction notice", "retraction of publication", "correction", "erratum", "published erratum",
+                "expression of concern", "expression-of-concern", "editorial"}
+EPMC_ABOUT = {"retraction of", "comment on", "expression of concern for", "erratum for", "correction for"}
+
+
+def europepmc_search(http, title, first_author="", anywhere=False):
+    """Europe PMC: PubMed, PubMed Central and life-science preprints. Its MEDLINE records are curated
+    by the US National Library of Medicine, and it marks retracted papers."""
+    words = [w for w in _words(title) if len(w) > 1 and w not in ("and", "or", "not")]  # lowercase "or" is still OR
+    if not words:
+        return [], 200
+    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+    base = {"format": "json", "resultType": "core", "pageSize": 5}
+    q = " ".join(words) if anywhere else f"TITLE:({' '.join(words)})"  # every word must be in the title
+    st, j = http.json(url, params={**base, "query": q})
+    res = ((j or {}).get("resultList") or {}).get("result") or []
+    sur = _surname(first_author)
+    if (j or {}).get("hitCount", 0) > 5 and sur:  # a generic title: the paper may not be on page one
+        _, j2 = http.json(url, params={**base, "query": f'{q} AND AUTH:"{sur}"'})
+        res = (((j2 or {}).get("resultList") or {}).get("result") or []) + res
+    out, seen = [], set()
+    for x in res:
+        types = {t.lower() for t in (x.get("pubTypeList") or {}).get("pubType") or []}
+        links = {c.get("type", "").lower() for c in (x.get("commentCorrectionList") or {}).get("commentCorrection") or []}
+        letter = types & {"letter", "comment"} and "journal article" not in types
+        if x.get("id") in seen or types & EPMC_NOTICES or letter or links & EPMC_ABOUT:
+            continue  # a notice, letter or reply about a paper often repeats its title, but is not the paper
+        seen.add(x.get("id"))
+        journal = (x.get("journalInfo") or {}).get("journal") or {}
+        venue = journal.get("title") or journal.get("medlineAbbreviation") or (x.get("bookOrReportDetails") or {}).get("publisher") or ""
+        if x.get("source") == "PPR" and "arxiv" in (venue + " " + ((x.get("bookOrReportDetails") or {}).get("publisher") or "")).lower():
+            continue  # Europe PMC's copy of an arXiv record; arXiv is asked directly
+        t = re.sub(r"^\[(.*)\]$", r"\1", strip_tags(x.get("title") or "").strip().rstrip("."))  # MEDLINE brackets translations
+        authors = [a.get("collectiveName") or " ".join(p for p in (a.get("firstName"), a.get("lastName")) if p) or a.get("fullName", "")
+                   for a in (x.get("authorList") or {}).get("author") or []]
+        out.append(Cand("Europe PMC", t, authors, to_year(x.get("pubYear")), venue, (x.get("doi") or "").lower() or None,
+                        url=f"https://europepmc.org/article/{x.get('source')}/{x.get('id')}",
+                        preprint=x.get("source") == "PPR" or "preprint" in types,
+                        extra={"retracted": "retracted publication" in types or "retraction in" in links}))
+    return out, st
+
+
+def _arxiv_feed(http, query, n=5):
+    st, txt = http.get("https://export.arxiv.org/api/query", params={"search_query": query, "max_results": n, "sortBy": "relevance"})
+    if st != 200:
+        return [], st
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    try:
+        entries = ET.fromstring(txt).findall("a:entry", ns)
+    except ET.ParseError:
+        return [], 0
+    out = []
+    for e in entries:
+        if "/api/errors" in e.findtext("a:id", "", ns):
+            continue
+        aid = re.sub(r"v\d+$", "", e.findtext("a:id", "", ns).rsplit("/abs/", 1)[-1])
+        out.append(Cand("arXiv", " ".join(e.findtext("a:title", "", ns).split()),
+                        [a.findtext("a:name", "", ns) for a in e.findall("a:author", ns)],
+                        to_year(e.findtext("a:published", "", ns)), "arXiv", None, aid, url=f"https://arxiv.org/abs/{aid}",
+                        preprint=True, extra={"abstract": " ".join(e.findtext("a:summary", "", ns).split())}))
+    return out, st
+
+
+def arxiv_title_search(http, title, first_author=""):
+    """arXiv by title: the exact phrase first, then the title's content words with the first author.
+    A stray quote makes arXiv return junk with HTTP 200, so the words are rebuilt from scratch."""
+    words = re.findall(r"[^\W_]+(?:'[^\W_]+)*", fold(clean_latex(title or "")).replace("’", "'").lower())
+    if not words:
+        return [], 200
+    out, st = _arxiv_feed(http, f'ti:"{" ".join(words)}"')
+    sur = _surname(first_author)
+    hit = lambda c: title_sim(title, c.title) >= TITLE_OK and (not sur or any(sur in surname_keys(a) for a in c.authors))
+    if st == 200 and not any(hit(c) for c in out):  # the phrase is also inside other titles, or a word differs
+        terms = [f"ti:{w}" for w in words if w not in ARXIV_STOP and len(w) > 2 and "'" not in w][:8]
+        if terms:
+            more, st = _arxiv_feed(http, " AND ".join(terms + ([f"au:{sur}"] if sur else [])))
+            out += [c for c in more if c.arxiv not in {d.arxiv for d in out}]
+    return out, st
+
+
+def datacite_search(http, title, first_author=""):
+    """DataCite, the DOI registry for theses, software, datasets and repository copies. Its arXiv
+    records are copies of arXiv's own, so they are skipped: arXiv is asked directly."""
+    words = _words(title)[:40]
+    if not words:
+        return [], 200
+    t = "titles.title:(" + " OR ".join(words) + ")"  # bare words are ANDed here, so one changed word would miss
+    sur = _surname(first_author)
+    q = f"{t} OR ({t} AND creators.name:({sur}))" if sur else t  # the author lifts a record, never filters
+    st, j = http.json("https://api.datacite.org/dois", params={"query": q, "page[size]": 5, "sort": "relevance",
+                      "fields[dois]": "doi,titles,creators,publicationYear,publisher,container,types,url"})
+    out = []
+    for d in (j or {}).get("data") or []:
+        a = d.get("attributes") or {}
+        doi = (a.get("doi") or "").lower()
+        if doi.startswith("10.48550/"):
+            continue
+        titles = a.get("titles") or []
+        main = next((x.get("title", "") for x in titles if not x.get("titleType")), titles[0].get("title", "") if titles else "")
+        sub = next((x.get("title", "") for x in titles if x.get("titleType") == "Subtitle"), "")
+        pub = a.get("publisher")
+        pub = pub.get("name", "") if isinstance(pub, dict) else (pub or "")
+        kind = (a.get("types") or {}).get("resourceTypeGeneral") or ""
+        out.append(Cand("DataCite", f"{main}: {sub}" if sub else main, [c.get("name", "") for c in a.get("creators") or []],
+                        to_year(a.get("publicationYear")), (a.get("container") or {}).get("title") or pub, doi or None,
+                        url=a.get("url") or (f"https://doi.org/{doi}" if doi else None), preprint=kind == "Preprint",
+                        extra={"kind": kind}))
+    return out, st
+
+
+def openlibrary_search(http, title, first_author="", year=None):
+    """Open Library, a library catalog of books. Its records list the year of every edition, and the
+    title of each edition, since a work's own title can be the original-language one."""
+    t, sur = " ".join(_words(title)), _surname(first_author)
+    if not t:
+        return [], 200
+    params = {"fields": "key,title,subtitle,author_name,first_publish_year,publish_year,publisher,editions,editions.title", "limit": 5}
+    st, j = http.json("https://openlibrary.org/search.json", params={**params, "q": f"{t} {sur}".strip()})
+    docs = (j or {}).get("docs") or []
+    if sur and st == 200 and not docs:  # "Schoelkopf" does not find "Schölkopf": try the title alone
+        st, j = http.json("https://openlibrary.org/search.json", params={**params, "q": t})
+        docs = (j or {}).get("docs") or []
+    out = []
+    for d in docs:
+        names = [(d.get("title") or "") + (": " + d["subtitle"] if d.get("subtitle") else "")]
+        names += [e.get("title", "") for e in ((d.get("editions") or {}).get("docs") or [])]
+        best = max(names, key=lambda n: title_sim(title, n))
+        years = [y for y in sorted(set(d.get("publish_year") or [])) if y] or [y for y in [d.get("first_publish_year")] if y]
+        y = min(years, key=lambda v: abs(v - year)) if year and years else d.get("first_publish_year")  # the cited edition
+        out.append(Cand("Open Library", best, d.get("author_name") or [], y, (d.get("publisher") or [""])[0],
+                        url=f"https://openlibrary.org{d['key']}" if d.get("key") else None, extra={"btype": "book"}))
+    return out, st
+
+
+OPENREVIEW_COPIES = ("dblp.org/", "DBLP.org/", "OpenReview.net/Public_Article", "OpenReview.net/Archive", "ML_Reproducibility_Challenge/")
+OPENREVIEW_VENUE = re.compile(r"\b(iclr|neurips|nips|icml|tmlr|corl|colm|uai|aistats)\b|learning representations|neural information "
+                              r"processing|transactions on machine learning research|robot learning|language modeling|openreview\.net", re.I)
+
+
+def _or_val(x):
+    return x.get("value") if isinstance(x, dict) else x  # API v2 wraps every field as {"value": ...}
+
+
+def openreview_fate(venue, vid, invitation):
+    """What an OpenReview record says happened to the paper. Only a positive sign counts as accepted."""
+    low = " ".join((venue, vid, invitation)).lower()
+    if "withdrawn" in low:
+        return "withdrawn"
+    if "rejected" in low:
+        return "rejected"
+    if (re.search(r"/(Submission|Under_Review|Decision_Pending|Submitted)$", vid) or re.match(r"(under review|decision pending)\b", venue, re.I)
+            or venue.endswith("Conference Submission")):
+        return "under review"
+    if "submitted" in venue.lower():  # "Submitted to ICLR 2023": public, but not accepted
+        return "rejected"
+    if "/workshop" in vid.lower() or "workshop" in low:
+        return "workshop"  # accepted at a workshop, which is not the main conference
+    return "accepted" if venue else "unknown"  # the oldest records (about ICLR 2021 and before) carry no decision
+
+
+def openreview_search(http, title, first_author="", v1=True):
+    """OpenReview, where ICLR, NeurIPS, TMLR and others take their submissions. It also shows papers
+    that were rejected or withdrawn, which no other database records. The older API (v1) allows
+    5 searches a minute, so callers that run in parallel pass v1=False."""
+    term = " ".join(_words(title))[:300]
+    if not term:
+        return [], 200
+    out, statuses = [], []
+    apis = [("https://api2.openreview.net", {"type": "terms"})] + ([("https://api.openreview.net", {})] if v1 else [])
+    for base, extra in apis:
+        st, j = http.json(base + "/notes/search", params={"term": term, "content": "title", "group": "all",
+                          "source": "forum", "limit": 10, **extra}, tries=2, retry_429=False)
+        statuses.append(st)
+        for n in (j or {}).get("notes") or []:
+            c = n.get("content") or {}
+            invs = n.get("invitations") or [n.get("invitation") or ""]
+            vid, venue = _or_val(c.get("venueid")) or "", _or_val(c.get("venue")) or ""
+            if n.get("ddate") or any(i.startswith(OPENREVIEW_COPIES) for i in invs) or vid.startswith(OPENREVIEW_COPIES):
+                continue  # deleted, or OpenReview's copy of a dblp, ORCID or arXiv record
+            authors = [a.get("fullname", "") if isinstance(a, dict) else a for a in _or_val(c.get("authors")) or []]
+            if not [a for a in authors if a and a.lower() != "anonymous"]:
+                continue  # an anonymous submission would match on its title alone
+            where = " ".join((venue, vid, invs[0]))
+            fate = openreview_fate(venue, vid, invs[0])
+            m = re.search(r"\b(?:19|20)\d{2}\b", where)
+            ms = n.get("pdate") or n.get("odate") or n.get("cdate")
+            year = int(m.group()) if m else (time.gmtime(ms / 1000).tm_year if ms else None)
+            out.append(Cand("OpenReview", " ".join((_or_val(c.get("title")) or "").split()), authors, year,
+                            venue if fate == "accepted" else "",  # a failed or pending submission says nothing about the venue
+                            url=f"https://openreview.net/forum?id={n.get('forum') or n.get('id')}", preprint=fate != "accepted",
+                            extra={"fate": fate, "where": where, "workshop": "/workshop" in vid.lower() or "workshop" in where.lower()}))
+        if st == 200 and any(title_sim(title, c.title) >= TITLE_OK for c in out):
+            break  # the older API only when the newer one lacks the paper
+    return out, next((x for x in statuses if x != 200), 200)  # any API that failed makes the search incomplete
+
+
+def core_search(http, title, first_author=""):
+    """CORE, which gathers open-access repositories: university theses and reports that the DOI-based
+    indexes miss. Its records of arXiv papers are copies, so they are skipped. Without CORE_API_KEY
+    it allows 100 searches a day, so the checker asks it only about theses, reports and entries no
+    other database has."""
+    t = " ".join(_words(title))[:250]  # CORE answers HTTP 500 to any punctuation, even inside quotes
+    if not t:
+        return [], 200
+    # A plain query costs one of the 100 daily tokens; a boolean one (an author boost) costs 3 to 5
+    headers = {"Authorization": f"Bearer {CORE_KEY}"} if CORE_KEY else None
+    st, j = http.json("https://api.core.ac.uk/v3/search/works/", params={"q": f'title:"{t}"', "limit": 5}, headers=headers, tries=2)
+    out = []
+    for w in (j or {}).get("results") or []:
+        if w.get("arxivId"):
+            continue
+        names = list(dict.fromkeys(a.get("name", "") for a in w.get("authors") or []))  # CORE repeats names
+        kind = w.get("documentType") or ""
+        venue = next((x.get("title") for x in w.get("journals") or [] if x.get("title")), "") or w.get("publisher") or ""
+        out.append(Cand("CORE", " ".join((w.get("title") or "").split()), names, w.get("yearPublished") or to_year(w.get("publishedDate")),
+                        venue, strip_doi(w.get("doi") or "") or None, url=f"https://core.ac.uk/works/{w.get('id')}",
+                        preprint="preprint" in kind.lower(), extra={"kind": kind}))
+    return out, st
+
+
+BOOK_TYPES = {"book", "inbook", "incollection", "booklet", "proceedings", "collection", "mvbook"}
+REPORT_TYPES = {"phdthesis", "mastersthesis", "thesis", "techreport", "report", "unpublished", "misc", "manual"}
+
+
+def lookup_extra(http, refs):
+    """Ask more independent databases about each entry the main ones left short of two confirmations,
+    and Europe PMC about every entry, since it is quick and marks retracted papers."""
+    # A website or software entry is checked by opening its own link; a library or DOI record with the
+    # same short name ("PyTorch") is usually something else.
+    todo = [r for r in refs if r.title and not looks_like_web(r)]
+    if not todo:
+        return
+    print(f"Asking more databases (Europe PMC, arXiv, DataCite, Open Library, OpenReview, CORE) about {len(todo)} entries...", flush=True)
+    for ref in todo:
+        sur = first_surname(ref)
+
+        def ask(name, fn, *extra):
+            got, st = fn(http, ref.title, sur, *extra)
+            ref.cands.extend(got)
+            if st == 200:
+                ref.searched.append(name)
+
+        ask("Europe PMC", europepmc_search)
+        f = ref.fields
+        at_openreview = bool(OPENREVIEW_VENUE.search(" ".join(f.get(k, "") for k in ("booktitle", "journal", "url", "howpublished", "note"))))
+        # OpenReview also for confirmed papers whose stated venue no record shows, since it may show a rejection
+        shown_there = any(confirms(ref, c) and not c.preprint and ref.venue and venue_code(c.venue) == ref.venue
+                          and c.year == ref.year for c in ref.cands)
+        if at_openreview and not shown_there:
+            ask("OpenReview", openreview_search)
+        if len(confirmations(ref)) >= 2:
+            continue
+        if not any(c.source == "arXiv" and title_sim(ref.title, c.title) >= TITLE_CLOSE for c in ref.cands):
+            ask("arXiv", arxiv_title_search)  # also when the entry's arXiv ID led to another paper
+        ask("DataCite", datacite_search)
+        nothing_close = not any(title_sim(ref.title, c.title) >= TITLE_CLOSE for c in ref.cands)
+        if ref.etype in BOOK_TYPES or (f.get("publisher") and not (f.get("journal") or f.get("booktitle"))) or nothing_close:
+            ask("Open Library", openlibrary_search, ref.year)
+        if ref.etype in REPORT_TYPES or nothing_close:
+            ask("CORE", core_search)
 
 
 def confirms(ref, c):
@@ -1087,8 +1330,15 @@ def lookup_basic(http, ref):
     ref.cands += cands
     if st not in (200, 404):
         ref.errors.append("Semantic Scholar did not answer")
-    ref.cands += crossref_search(http, ref.title, first_surname(ref))
-    ref.cands += openalex_search(http, ref.title, first_surname(ref))
+    else:
+        ref.searched.append("Semantic Scholar")
+    for name, host, fn in (("Crossref", "api.crossref.org", crossref_search), ("OpenAlex", "api.openalex.org", openalex_search)):
+        got, st = fn(http, ref.title, first_surname(ref))
+        ref.cands += got
+        if st == 200:
+            ref.searched.append(name)
+        elif host not in http.down:  # a host that is down for the whole run is named once, at the top
+            ref.errors.append(f"{name} did not answer")
 
 
 def lookup_dblp(http, refs):
@@ -1110,30 +1360,19 @@ def lookup_dblp(http, refs):
         return
     batches = [items[s:s + 10] for s in range(0, len(items), 10)]
     print(f"Looking up DBLP in {len(batches)} batch(es); dblp asks for 10 s between queries, so this takes a moment...")
+    answered = set()
     for b in batches:
-        for i, k in dblp_find(http, b):
+        for i, k in dblp_find(http, b, answered):
             wanted[i].add(k)
     recs = dblp_details(http, sorted(set().union(*wanted.values()))) if wanted else {}
     if not recs and wanted:
         print("  DBLP did not answer, continuing without it.")
+    for i in answered:
+        if recs or not wanted.get(i):  # a match whose record could not be read was not really answered
+            refs[i].searched.append("DBLP")
     for i, keys in wanted.items():
         have = {c.dblp for c in refs[i].cands if c.source == "DBLP"}
         refs[i].cands += [dblp_cand(k, recs[k]) for k in sorted(keys) if k in recs and k not in have]
-
-
-def lookup_scholar(http, refs, everything):
-    # Google Scholar is the extra source for entries fewer than two databases confirm
-    todo = [r for r in refs if r.title and (everything or len(confirmations(r)) < 2)]
-    if not todo:
-        return
-    print(f"Searching Google Scholar (SerpApi) for {len(todo)} entr{'y' if len(todo) == 1 else 'ies'}...")
-    for r in todo:
-        try:
-            r.cands += scholar_search(http, r.title)
-            r.scholar_checked = True
-        except ScholarOff as e:
-            print(f"  Google Scholar stopped answering ({e}); continuing without it.")
-            return
 
 
 def version_rank(ref, c):
@@ -1149,9 +1388,7 @@ def judge(ref):
     scored = [(title_sim(ref.title, c.title), c) for c in ref.cands]
     if not scored or max(s for s, _ in scored) < TITLE_CLOSE:
         ref.status = "NOT FOUND"
-        where = "Semantic Scholar, DBLP, Crossref, OpenAlex" + (", arXiv" if ref.arxiv else "")
-        if ref.scholar_checked:
-            where += ", Google Scholar"
+        where = ", ".join(dict.fromkeys(ref.searched)) or "any database (none answered)"
         ref.problems.append(f"no paper with this title was found in {where}. It may be made up, "
                             "or it may be a book, thesis, website, or very new paper")
         ref.problems += ref.id_problems
@@ -1180,7 +1417,7 @@ def judge(ref):
     elif ac and not ac.first_ok:
         ref.problems.append(f"the first author differs (real first author: {surnames_for_display(best.authors, 1)})")
 
-    pool = [c for c in same if c.year]
+    pool = [c for c in same if c.year and is_good(ref, c)] or [c for c in same if c.year]  # not a letter that reuses the title
     if ref.venue != "arXiv" and any(not c.preprint for c in pool):
         pool = [c for c in pool if not c.preprint]  # the entry cites a published version
     registry = {c.doi.lower(): c.year for c in pool if c.source == "Crossref" and c.doi}
@@ -1209,12 +1446,32 @@ def judge(ref):
             ref.problems.append(f"the venue differs (yours says {short(mine, 60)}; the databases list "
                                 f"{'; '.join(sorted({short(c.venue, 60) for c in near}))})")
 
+    retracted = [c for c in ref.cands if c.extra.get("retracted") and confirms(ref, c)]
+    cited = [c for c in retracted if (c.doi.lower() == ref.doi.lower() if c.doi and ref.doi
+                                      else bool(ref.year and c.year and abs(c.year - ref.year) <= 1))]
+    if cited:
+        ref.problems.append("Europe PMC marks this paper as retracted; check that you still want to cite it")
+    elif retracted:
+        ref.notes.append("Europe PMC lists a retracted version of this paper; check that yours is not that one")
+    entry_workshop = "workshop" in " ".join(ref.fields.get(k, "") for k in ("booktitle", "journal", "note", "howpublished", "series")).lower()
+    for c in ref.cands:
+        if (c.extra.get("fate") not in ("rejected", "withdrawn") or not ref.venue or ref.year != c.year
+                or c.extra.get("workshop", False) != entry_workshop or venue_code(c.extra.get("where", "")) != ref.venue
+                or not confirms(ref, c)):
+            continue
+        # A record of the paper at that venue and year, from a source that dates by edition, overrides the rejection
+        if not any(d is not c and d.source in ("OpenReview", "DBLP") and not d.preprint and venue_code(d.venue) == ref.venue
+                   and d.year == ref.year for d in same):
+            ref.problems.append(f"OpenReview shows this paper was {c.extra['fate']} at {ref.venue} {c.year}, so it did not "
+                                f"appear there ({c.url})")
+            break
+
     ref.problems += ref.id_problems
     ref.confirmed_by = confirmations(ref)
     if not ref.problems and len(ref.confirmed_by) < 2:
         only = ref.confirmed_by[0] if ref.confirmed_by else "no database"
         ref.problems.append(f"only one database ({only}) confirms this entry, and every entry needs two independent "
-                            "sources; confirm it in a second one (a publisher page, DBLP, OpenAlex, Google Scholar)")
+                            "sources; confirm it in a second one (Google Scholar, the publisher's page or a library catalog)")
     ref.status = "CHECK" if ref.problems else "OK"
 
 
@@ -1259,7 +1516,7 @@ def version_conflict(ref, fields):
         if ref.fields.get(k) and not fields.get(k) and ref.etype in ("book", "phdthesis", "mastersthesis", "techreport", "manual"):
             return f"has no {k}, which your entry gives ({short(clean_latex(ref.fields[k]), 40)})"
     mine = clean_latex(ref.fields.get("journal") or ref.fields.get("journaltitle") or ref.fields.get("booktitle") or "")
-    if mine and not (fields.get("journal") or fields.get("booktitle")) and ref.etype in ("article", "inproceedings"):
+    if mine and not (fields.get("journal") or fields.get("booktitle")) and ref.etype in ("article", "inproceedings", "incollection", "inbook", "conference"):
         return f"has no journal or booktitle, which your entry gives ({short(mine, 40)})"
     theirs = clean_latex(fields.get("journal") or fields.get("booktitle") or "")
     new_year = to_year(fields.get("year") or fields.get("date"))
@@ -1270,6 +1527,7 @@ def version_conflict(ref, fields):
     # The change is a fix only if no database knows the version the entry cites.
     new_doi = strip_doi(fields.get("doi", "")).lower()
     own = [c for c in ref.cands if is_good(ref, c) and not (new_doi and (c.doi or "").lower() == new_doi)
+           and c.extra.get("fate") not in ("rejected", "withdrawn", "under review", "workshop")
            and (not ref.year or not c.year or abs(c.year - ref.year) <= 1)
            and (not mine or not c.venue or same_venue(mine, c.venue))]
     if own:
@@ -1278,11 +1536,11 @@ def version_conflict(ref, fields):
     return None
 
 
-def suggest(http, ref, scholar_bib):
+def suggest(http, ref):
     """The best BibTeX for the matched paper, as (etype, fields, source), but only when a second,
     independent database agrees with it on title, first author and year, and it describes the same
     version the entry cites without dropping where it appeared. Otherwise None, and the entry is kept."""
-    got = _suggest(http, ref, scholar_bib)
+    got = _suggest(http, ref)
     if not got:
         return None
     if not corroborated(ref, got[1], got[2]):
@@ -1295,7 +1553,7 @@ def suggest(http, ref, scholar_bib):
     return got
 
 
-def _suggest(http, ref, scholar_bib):
+def _suggest(http, ref):
     """Pick the best BibTeX for the paper that was matched. Returns (etype, fields, source) or None."""
     best = ref.best
     if not best:
@@ -1306,15 +1564,6 @@ def _suggest(http, ref, scholar_bib):
             ac = author_check(best.authors, c)
             if ac is None or ac.frac >= 0.5:
                 versions.append(c)
-    try:
-        if scholar_bib:
-            sc = next((c for c in versions if c.source == "Google Scholar" and c.extra.get("result_id")), None)
-            if sc:
-                txt = scholar_bibtex(http, sc.extra["result_id"])
-                if txt and from_bibtex_text(txt):
-                    return (*from_bibtex_text(txt), "Google Scholar")
-    except ScholarOff:
-        pass
     dblp = [c for c in versions if c.source == "DBLP"]
     published = [c for c in dblp if not c.preprint]
     if published:
@@ -1325,7 +1574,7 @@ def _suggest(http, ref, scholar_bib):
                 return (*from_bibtex_text(txt), "Crossref")
         return (*tidy(*dblp_fields(c)), "DBLP")
     mine = clean_latex(ref.fields.get("journal") or ref.fields.get("booktitle") or "")
-    with_doi = sorted((c for c in versions if c.doi and not c.doi.lower().startswith("10.48550/")),
+    with_doi = sorted((c for c in versions if c.doi and c.source != "DataCite" and not c.doi.lower().startswith("10.48550/")),
                       key=lambda c: (c.doi.lower() != (ref.doi or "").lower(),  # the entry's own DOI first,
                                      not (mine and c.venue and same_venue(mine, c.venue)),  # then its venue,
                                      abs((c.year or 0) - (ref.year or c.year or 0))))  # then its year
@@ -1379,7 +1628,9 @@ def check_link(http, ref):
 
 
 def scholar_link(ref):
-    return "https://scholar.google.com/scholar?q=" + quote_plus(ref.title or ref.key)
+    """A Google Scholar search for the exact title, for the user or a browser the user watches."""
+    title = (ref.title or "").replace('"', " ").strip()
+    return "https://scholar.google.com/scholar?hl=en&q=" + quote_plus(f'"{title}"' if title else ref.key)
 
 
 def mark_duplicates(refs):
@@ -1591,11 +1842,7 @@ def main():
     ap.add_argument("-o", "--out", help="output .bib file (default: <name>.verified.bib)")
     ap.add_argument("--report", help="report file (default: <name>.report.md)")
     ap.add_argument("-i", "--interactive", action="store_true", help="review flagged entries one by one")
-    ap.add_argument("--scholar", action="store_true",
-                    help="also search Google Scholar (needs SERPAPI_KEY) for entries the free sources could not confirm")
-    ap.add_argument("--scholar-all", action="store_true",
-                    help="take the BibTeX of every confirmed entry from Google Scholar (about 2 SerpApi searches per entry)")
-    ap.add_argument("--email", default=os.environ.get("VERIFY_BIB_EMAIL"), help="your email, for Crossref's polite pool")
+    ap.add_argument("--email", default=os.environ.get("VERIFY_BIB_EMAIL"), help="your email, for Crossref's and OpenAlex's polite pools")
     ap.add_argument("--only", nargs="+", metavar="KEY", help="check only these citation keys")
     ap.add_argument("--no-dblp", action="store_true", help="skip DBLP")
     ap.add_argument("--no-cache", action="store_true", help="ignore cached lookups from earlier runs")
@@ -1629,10 +1876,6 @@ def main():
         return
     if not args.bibfile:
         ap.error("give a .bib file to check, or --bibtex ID, or --search QUERY")
-
-    if (args.scholar or args.scholar_all) and not SERPAPI_KEY:
-        sys.exit("--scholar needs a SerpApi key. Get one at https://serpapi.com (the free plan has 250 searches "
-                 "a month), then run:  export SERPAPI_KEY=your_key")
 
     src = Path(args.bibfile)
     if not src.exists():
@@ -1671,8 +1914,7 @@ def main():
             print(f"  [{n:>3}/{len(todo)}] {short(ref.key, 38):<38} {('found in ' + hit) if hit else 'not confirmed yet'}")
         if not args.no_dblp:
             lookup_dblp(http, todo)
-        if args.scholar or args.scholar_all:
-            lookup_scholar(http, todo, args.scholar_all)
+        lookup_extra(http, todo)
         print("Comparing entries and fetching clean BibTeX...")
         for ref in todo:
             judge(ref)
@@ -1685,7 +1927,7 @@ def main():
                 if ref.problems:
                     ref.status = "CHECK"
             if ref.status in ("OK", "CHECK"):
-                ref.suggestion = suggest(http, ref, args.scholar_all)
+                ref.suggestion = suggest(http, ref)
             if ref.status == "OK":
                 ref.decision = "auto" if ref.suggestion else "keep"
         mark_duplicates(todo)

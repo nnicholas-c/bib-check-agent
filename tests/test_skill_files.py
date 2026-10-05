@@ -47,7 +47,7 @@ proc = (SKILL / "references" / "procedure.md").read_text(encoding="utf-8")
 for phrase in ("never from memory", "--bibtex", "--search", "published version", "latest revision",
                "% FABRICATED: no real source found", "% UNRESOLVED", ".bak2", "% Checked by verify_bib.py",
                "Citation keys are the only text you may change in .tex files",
-               "flags again by design", "A preprint and its published version", "Don't add new entries", "latexmk -v", "matching whole keys", "likely fabricated", "at least two independent places", "never try to get around a CAPTCHA"):
+               "flags again by design", "A preprint and its published version", "Don't add new entries", "latexmk -v", "matching whole keys", "likely fabricated", "at least two independent places", "try to get around a CAPTCHA", "google.com/sorry", "A [CITATION] item never counts", "never by saving it"):
     assert phrase in js, f"investigate.js lacks: {phrase}"
     assert phrase in proc, f"procedure.md lacks: {phrase}"
 assert "references/procedure.md" in text, "SKILL.md must point other agents to the procedure"

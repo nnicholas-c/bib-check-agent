@@ -13,9 +13,10 @@ AI writing tools invent references that look real. Bib Check Agent checks every 
 - citations whose paper doesn't support the sentence citing them
 
 **How it decides:**
-- **Every entry is checked** against Semantic Scholar, DBLP, Crossref, OpenAlex and arXiv by a deterministic Python checker. No model is involved in the lookups.
+- **Every entry is checked** against Semantic Scholar, DBLP, Crossref, OpenAlex, Europe PMC and arXiv by a deterministic Python checker. No model is involved in the lookups. An entry those leave short of two confirmations also goes to arXiv's title search, DataCite (theses, software, datasets) and, where they fit, Open Library (books), OpenReview (ICLR, NeurIPS, TMLR and similar) and CORE (repository copies and theses).
 - **Two independent sources, always.** An entry counts as confirmed only when at least two different databases agree on its title and authors. An entry only one database knows is flagged and confirmed in a second place by the agent. Replacement BibTeX must also be backed by a second source, and the checker never swaps your paper for a different version of it, such as the journal reprint of a conference paper.
-- **Google Scholar, where it can be used.** Google Scholar has no official API and blocks scripts, so the checker reaches it through [SerpApi](https://serpapi.com) when you set `SERPAPI_KEY` and pass `--scholar`. The agent may also open Google Scholar in its own web tools, but it never tries to get around a CAPTCHA.
+- **Google Scholar, with your help.** Google Scholar has no API and shows a CAPTCHA to automated searches. In Claude Code, the agent searches it in a browser you can see (the desktop app's browser, or Claude in Chrome) for each entry that fewer than two databases confirm. Claude Code asks you before it uses the browser. If a CAPTCHA appears, the agent stops and asks you to solve it, then carries on. It never solves or gets around a CAPTCHA itself. For entries it didn't search that way, the workflow's agents may try Scholar with their own web tools, stopping at any CAPTCHA. Other agents work the same way with their own browser, or give you the Scholar links to check. A Scholar listing only points the agent to the work's own page, which is what counts, and a [CITATION]-only listing never counts. Google's `robots.txt` asks automated tools not to search Scholar, so the skill keeps to the entries that need it.
+- **Retractions and rejections.** Europe PMC marks retracted papers, and OpenReview shows submissions that were rejected or withdrawn, so a citation to one is flagged.
 - **Each flagged entry is researched** from evidence the agent actually opened, never from memory. New BibTeX comes from official exports (Crossref, arXiv, ACL Anthology and others), under your original citation key.
 - **Every decision is re-checked.** In Claude Code with dynamic workflows on, a separate reviewer tries to refute each fix. Calling a reference made up needs two independent searches to fail, and disagreements come back to you as UNRESOLVED instead of a guess.
 - **Your files are backed up first**, unless git already holds them. Citation keys are the only thing it changes in your `.tex` files, and only to merge duplicates. It never rewrites your sentences.
@@ -87,27 +88,37 @@ If you don't name a file, it finds the `.bib` files your main `.tex` file uses.
 
 ## Accuracy
 
-Measured on the 68-entry [benchmark](#development) in October 2026, scored against DOI and arXiv registry records. The benchmark has 38 real works, 18 real works with one planted error each and 12 invented references. OpenAlex was out of quota for the whole run and Semantic Scholar had no API key, so these are close to worst-case conditions.
+Measured in October 2026 on the 68-entry [benchmark](#development), scored against DOI and arXiv registry records rather than against any database the checker uses. The benchmark has 38 real works, 18 real works with one planted error each, and 12 invented references. During the runs OpenAlex was out of its daily quota and Semantic Scholar had no API key, so conditions were close to the worst case.
 
-| | Checker 1.0 | Checker 1.1 | Full skill 1.1, Claude Code |
+**The checker alone** (no agent):
+
+| | 1.0 | 1.1 | 1.2 |
 |---|---|---|---|
 | **Faulty references** | **3** | **0** | **0** |
-| Real entries correct | 31 of 38 (4 flagged) | 32 of 38 (6 flagged) | 38 of 38 |
-| Planted errors | 2 fixed, 16 flagged | 1 fixed, 17 flagged | 18 fixed |
-| Invented references | 12 flagged | 12 flagged | 8 marked FABRICATED, 4 replaced with a real paper for the same claim, each disclosed |
+| Real entries correct | 31 of 38 (4 flagged) | 32 of 38 (6 flagged) | 37 of 38 (1 flagged) |
+| Planted errors | 2 fixed, 16 flagged | 1 fixed, 17 flagged | 1 fixed, 17 flagged |
+| Invented references | 12 flagged | 12 flagged | 12 flagged |
 
-The three faults in 1.0 were cleanups that changed what an entry cites:
-- the PRISMA statement swapped from *BMJ* for its *Systematic Reviews* co-publication
-- a book's publisher dropped
-- a thesis's school dropped
+The three faults in 1.0 were cleanups that changed what an entry cites: the PRISMA statement swapped from *BMJ* for its *Systematic Reviews* co-publication, a book's publisher dropped, and a thesis's school dropped. Since 1.1 the checker refuses those changes and needs two independent databases to agree before it passes an entry or uses their BibTeX. The databases added in 1.2 confirm the books, theses and arXiv-only papers that used to be left for the agent.
 
-Version 1.1 refuses those changes. It also requires two independent databases to agree before it passes an entry or uses their BibTeX. The full run used 85 agents and took 19 minutes. Every one of its decisions on a real paper cites two to five independent sites. Every FABRICATED verdict came from a search of the web and the paper databases, and 5 of the 8 also searched Google Scholar directly. Each one then survived two separate reviewers, one hunting for the paper by its title and one by its authors.
+**The whole skill in Claude Code**, against a single-agent design (this skill's predecessor) on the same paper:
+
+| | Single agent, no reviewers | Bib Check Agent 1.2 |
+|---|---|---|
+| Faulty references with Claude Opus | 0 | 0 |
+| Faulty references with Claude Haiku, a small model | **1** (left a wrong year) | **0** |
+| Invented references caught (Opus) | 12: 8 FABRICATED, 4 disclosed substitutes | 12: 8 FABRICATED, 4 disclosed substitutes |
+| Agents, time (Opus) | 1 agent, 14 minutes | 91 agents, 22 minutes |
+
+With a strong model both designs end with no faulty reference, and the single agent is much cheaper. The safeguards pay off with weaker models: the small model running the single-agent design trusted a year that only Semantic Scholar's preprint date supported. The 1.2 checker flags that year itself, and the reviewers check every fix. In the 1.2 Opus run, every decision on a real paper cites at least two independent sites. Every FABRICATED verdict also records that Google Scholar shows nothing, and survived two separate reviewers, one searching by title and one by authors. One correct fix came back UNRESOLVED because a reviewer couldn't reach Semantic Scholar; reviewers now accept other sources in that case.
+
+"Disclosed substitutes" are invented references replaced with a real paper that supports the same sentence. The decisions file lists each one for the author to approve.
 
 ## Where it works
 
-The checker needs outbound HTTPS to `api.semanticscholar.org`, `api.crossref.org`, `export.arxiv.org`, `arxiv.org`, `doi.org`, `data.crosscite.org`, `sparql.dblp.org` and `api.openalex.org`.
+The checker needs outbound HTTPS to `api.semanticscholar.org`, `api.crossref.org`, `export.arxiv.org`, `arxiv.org`, `doi.org`, `data.crosscite.org` and `sparql.dblp.org`. It also uses `api.openalex.org`, `www.ebi.ac.uk` (Europe PMC), `api.datacite.org`, `openlibrary.org`, `api2.openreview.net`, `api.openreview.net` and `api.core.ac.uk` when it can reach them.
 - **Core databases blocked:** if Crossref, arXiv or Semantic Scholar is unreachable, the checker stops with "Cannot reach the paper databases" rather than reporting real papers as missing.
-- **DBLP or OpenAlex blocked, or out of quota:** the checker still runs and names the missing database at the top of the report. Entries it then couldn't confirm twice are flagged, never passed.
+- **Any other database blocked, or out of quota:** the checker still runs and names the missing database at the top of the report. Entries it then couldn't confirm twice are flagged, never passed. A NOT FOUND message lists only the databases that actually answered.
 - **Website and software entries:** checking one also opens that entry's own `url`.
 
 | Platform | Status | Network notes |
@@ -158,15 +169,16 @@ The checker never changes `refs.bib`. Every run, including `-i`, rewrites `refs.
 Optional environment variables:
 - `S2_API_KEY`: a free Semantic Scholar key, for faster and steadier runs. Without one, Semantic Scholar throttles a long bibliography to roughly one entry every 10 to 25 seconds.
 - `OPENALEX_API_KEY`: a free OpenAlex key. OpenAlex now limits unauthenticated use per day, and when it says to come back hours later the checker carries on without it and says so in the report.
-- `SERPAPI_KEY`: needed for `--scholar`, which also searches Google Scholar through SerpApi for every entry fewer than two databases confirm (`--scholar-all` searches it for all of them). SerpApi is a paid service with a small free tier.
-- `VERIFY_BIB_EMAIL`: sent to Crossref for its faster "polite" pool, and only if you set it.
+- `CORE_API_KEY`: a free CORE key. Without one, CORE allows 100 searches a day, so the checker asks it only about theses, reports and entries no other database has, and `--search` leaves it out.
+- `VERIFY_BIB_EMAIL`: sent to Crossref and OpenAlex for their faster "polite" pools, and only if you set it.
 
 ## Privacy and permissions
 
 **What is sent:**
-- Titles, author names, DOIs and arXiv IDs from your `.bib` file go to the scholarly APIs above, and to SerpApi if you run with `--scholar`.
+- Titles, author names, DOIs and arXiv IDs from your `.bib` file go to the scholarly APIs above.
 - For a website or software entry that matches no paper, the checker opens the entry's `url` to check that the link works.
-- Your email goes only to Crossref, and only if you set `VERIFY_BIB_EMAIL`.
+- Google Scholar searches run in a browser you can see, after you allow it, and only for entries that need them. The workflow's agents may also fetch Scholar search pages for entries that weren't searched that way.
+- Your email goes only to Crossref and OpenAlex, and only if you set `VERIFY_BIB_EMAIL`.
 - Your paper's text is never sent.
 
 Lookups are cached in `.verify_bib_cache.json` next to your `.bib`.
@@ -180,14 +192,15 @@ Lookups are cached in `.verify_bib_cache.json` next to your `.bib`.
 - `cp`, for backups
 - LaTeX build commands
 
-Review the `allowed-tools` line in `SKILL.md` if you want to narrow it. Organizations that only allow managed permission rules will see prompts instead.
+Using the browser for Google Scholar isn't pre-approved, so Claude Code asks you first. Review the `allowed-tools` line in `SKILL.md` if you want to narrow it. Organizations that only allow managed permission rules will see prompts instead.
 
 ## Limits
 
-- **Cost.** In Claude Code the workflow runs 2 to 3 agents per flagged entry, plus one per 8 confirmed entries; an 11-entry test bibliography cost about $6 at API prices. Local models cost nothing but take longer.
+- **Cost.** In Claude Code the workflow runs 2 to 3 agents per flagged entry, plus one per 8 confirmed entries; an 11-entry test bibliography cost about $6 at API prices, and the 68-entry benchmark took about 90 agents. Local models cost nothing but take longer.
 - **Judgment varies a little between runs.** For example, whether a citation "partly" supports a broad claim. Clear-cut cases, such as wrong authors, wrong venues and invented papers, have been stable in testing.
 - **Database replacements can drop fields.** When the checker replaces a confirmed entry with the DBLP or Crossref record, fields that record lacks, such as your own `url` or `note`, are lost. It refuses a replacement that would drop a book's publisher, a thesis's school or a paper's venue. Venue names may also get longer.
-- **No retraction check yet.**
+- **Retractions are checked only through Europe PMC,** so mostly in the life sciences.
+- **Rejected or withdrawn submissions are caught only where OpenReview records the decision,** roughly ICLR and NeurIPS from 2022 on, and TMLR.
 - Files may come back with Unix line endings.
 
 ## Development

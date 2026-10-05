@@ -60,7 +60,8 @@ def score_real(t, comments, f, checker):
     authors = [a for a in vb.split_authors(f.get("author", "") or f.get("editor", "")) if a.lower() != "others"]
     truth_keys = set().union(*(vb.surname_keys(a) for a in t["authors"] + t.get("author_aliases", []))) if t["authors"] else set()
     if authors and t["authors"]:
-        if not vb._name_hit(authors[0], vb.surname_keys(t["authors"][0])):
+        firsts = set().union(*(vb.surname_keys(a) for a in [t["authors"][0], *t.get("alt_first_authors", [])]))
+        if not vb._name_hit(authors[0], firsts):
             p.append(f"first author {vb.clean_latex(authors[0])!r}, not {t['authors'][0]}")
         wrong = [a for a in authors[:10] if not vb._name_hit(a, truth_keys)]
         if wrong:
@@ -93,7 +94,10 @@ def score_fabricated(x, comments, f, decisions, checker):
     title = vb.clean_latex((f or {}).get("title", ""))
     if vb.title_sim(title, x["title"]) >= 95:
         return "FAULTY", ["the invented reference was left looking real"]
-    disclosed = re.search(rf"{re.escape(x['key'])}[^\n]*SUBSTITUTED|SUBSTITUTED[^\n]*{re.escape(x['key'])}", decisions)
+    # Disclosed: the key is on a line that says SUBSTITUTED, or inside a section headed SUBSTITUTED
+    sections = re.split(r"\n(?=#)", decisions)
+    disclosed = any(x["key"] in line and "SUBSTITUTED" in line for line in decisions.splitlines()) or any(
+        x["key"] in sec and "SUBSTITUTED" in sec.lstrip().splitlines()[0] for sec in sections if sec.strip())
     return ("SUBSTITUTED", [f"now cites {title!r}"]) if disclosed else ("FAULTY", [f"silently replaced with {title!r}"])
 
 

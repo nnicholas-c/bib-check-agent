@@ -116,6 +116,7 @@ Invoke the skill explicitly. Local models rarely pick up a skill on their own.
 | The model prints `<tool_call>` or `<function=...>` text instead of running tools | The model or Ollama version has a tool-calling bug. Upgrade Ollama, or try another model. |
 | The model asks where your `.bib` file is | Start the agent from your paper's folder, and name the file in your request. |
 | The model says it can't search the web | Expected with most local setups. The procedure researches with the checker's `--search` instead, and marks references it can't find as UNRESOLVED ("likely fabricated") rather than calling them made up. |
+| Google Scholar wasn't searched | Expected with a local model. Claude in Chrome needs a Claude account, and the recipe above leaves out the web and question tools, so the skill can't search Scholar with you. The decisions file lists the Scholar link of every FABRICATED or UNRESOLVED entry, so you can check those yourself. |
 | "Cannot reach the paper databases" | Your network or sandbox blocks the hosts listed in the README. |
 | Very slow | Check `ollama ps`. If the processor isn't `100% GPU`, part of the model is on the CPU. |
 | No Bash tool on Windows | Install Git for Windows and restart Claude Code. |

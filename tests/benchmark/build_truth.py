@@ -85,7 +85,7 @@ def main():
                 t["arxiv"] = w["arxiv"]
         if w.get("title_override"):  # the published version's title differs from the registry's
             t["title"] = w["title_override"]
-        t.update({k: w[k] for k in ("venue", "alt_years", "alt_titles", "author_aliases", "trap", "field", "type", "verified") if k in w})
+        t.update({k: w[k] for k in ("venue", "alt_years", "alt_titles", "author_aliases", "alt_first_authors", "trap", "field", "type", "verified") if k in w})
         truth[w["key"]] = t
         print(f"{w['key']:<28} {t['source']:<9} {t['year']}  {t['title'][:70]}")
     (HERE / "truth.json").write_text(json.dumps(truth, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")

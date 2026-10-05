@@ -513,6 +513,7 @@
   {
    "key": "lander2001initial",
    "doi": "10.1038/35057062",
+   "alt_first_authors": ["Lander"],
    "expect": "initial sequencing and analysis of the human genome",
    "venue": [
     "Nature"
