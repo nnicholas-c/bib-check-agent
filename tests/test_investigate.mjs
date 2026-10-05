@@ -139,6 +139,12 @@ await run({ ...ARGS, apply: false, scholar: { fake: 'not searched', fixed: { tit
 assert.match(prompts2['investigate:fake'], /Nobody searched Google Scholar/)                      // "not searched" is not a search
 assert.match(prompts2['investigate:fixed'], /user's browser: \{"title":"X"\}/)                     // non-text values are shown as JSON
 await assert.rejects(run({ ...ARGS, scholar: ['fake'] }, h.agent, h.parallel, () => {}), /args.scholar must be an object/)
+assert.match(prompts['find-by-title:fake'], /Never try to get around a CAPTCHA/)                    // the hunters carry the rule too
+assert.match(prompts['find-by-title:fake'], /Don't use the browser tools/)
+h = harness(); const real3 = h.agent, prompts3 = {}
+await run({ ...ARGS, apply: false, scholar_skipped: true }, (p, o) => { prompts3[o.label] = p; return real3(p, o) }, h.parallel, () => {})
+assert.match(prompts3['investigate:fixed'], /The user stopped the Google Scholar searches/)          // after Skip, agents leave Scholar alone
+assert.doesNotMatch(prompts3['investigate:fixed'], /You may open https:\/\/scholar/)
 
 // Bad input fails loudly instead of checking nothing
 await assert.rejects(run({ ...ARGS, flagged: 'fixed,fake' }, h.agent, h.parallel, () => {}), /must be an array/)

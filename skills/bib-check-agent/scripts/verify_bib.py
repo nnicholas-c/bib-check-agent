@@ -1628,9 +1628,12 @@ def check_link(http, ref):
 
 
 def scholar_link(ref):
-    """A Google Scholar search for the exact title, for the user or a browser the user watches."""
-    title = (ref.title or "").replace('"', " ").strip()
-    return "https://scholar.google.com/scholar?hl=en&q=" + quote_plus(f'"{title}"' if title else ref.key)
+    """A Google Scholar search for the exact title, for the user or a browser the user watches. A matched
+    entry uses the database's own spelling, since LaTeX math ($\\epsilon$) leaves holes in the cleaned title."""
+    matched = ref.best and title_sim(ref.title, ref.best.title) >= TITLE_OK
+    title = (ref.best.title if matched else ref.title or "").replace('"', " ").strip()
+    exact = title and (matched or not re.search(r"\$|\\[A-Za-z]", ref.fields.get("title", "")))
+    return "https://scholar.google.com/scholar?hl=en&q=" + quote_plus(f'"{title}"' if exact else title or ref.key)
 
 
 def mark_duplicates(refs):
@@ -1823,6 +1826,8 @@ def write_report(path, refs, counts, src_name, down=None):
         src = r.suggestion[2] if r.suggestion and r.decision in ("auto", "accept") else ("pasted" if r.decision == "paste" else "yours")
         notes = "; ".join(r.notes + ([f"lookup trouble: {', '.join(r.errors)}"] if r.errors else []))
         L.append(f"| {r.status} | `{r.key}` | {md_escape(short(r.title, 70))} | {', '.join(r.confirmed_by) or '-'} | {src} | {md_escape(notes)} |")
+    # An exact-title search for every entry with a title; websites and software are checked through their own link
+    L += ["", "## Google Scholar links", ""] + [f"- `{r.key}`: {scholar_link(r)}" for r in refs if r.title and r.status != "WEB"]
     path.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 

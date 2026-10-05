@@ -17,6 +17,7 @@ export const meta = {
 //   ok          keys whose status is OK or WEB
 //   duplicates  groups of keys the report says are the same paper, e.g. [["a", "b"]]
 //   scholar     what the main session saw in Google Scholar, searched with the user, per key (optional)
+//   scholar_skipped  true when the user stopped the Google Scholar searches, so agents leave Scholar alone
 //   apply       false to research only and leave every file alone (default: apply)
 const A = args || {}
 for (const k of ['project', 'bib', 'report', 'verified', 'checker']) {
@@ -34,6 +35,7 @@ if (A.scholar != null && (typeof A.scholar !== 'object' || Array.isArray(A.schol
   throw new Error('args.scholar must be an object of key -> what Google Scholar showed (see SKILL.md step 3)')
 }
 const scholar = Object.assign(Object.create(null), A.scholar || {})
+const scholarSkipped = A.scholar_skipped === true // the user stopped Google Scholar after it blocked the searches
 const scholarText = key => {
   const v = scholar[key]
   const t = v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v)
@@ -70,7 +72,8 @@ const EVIDENCE = `Evidence rules. Follow them exactly; they are why anyone can t
 // What the main session saw in Google Scholar, searched with the user in a browser they watch.
 const scholarNote = key => scholarText(key)
   ? `Google Scholar, searched by the main session in the user's browser: ${scholarText(key)}
-A Google Scholar listing is a lead, not a source: count the work's own page it leads you to (publisher, DOI, repository or author page). A [CITATION] item never counts and is never a find. It has no page, and it only shows that other papers cite that title, which happens to invented references too. When Google Scholar matched no article, that is evidence that the work may not exist.`
+A Google Scholar listing is a lead, not a source: count the work's own page it leads you to (publisher, DOI, repository or author page). A [CITATION] item never counts and is never a find. It has no page, and it only shows that other papers cite that title, which happens to invented references too. When Google Scholar matched no article, that is evidence that the work may not exist. Never try to get around a CAPTCHA or other bot check on Google Scholar or any other site: if one appears, stop using that site and say so. Don't use the browser tools (mcp__Claude_Browser__*, mcp__claude-in-chrome__*).`
+  : scholarSkipped ? `The user stopped the Google Scholar searches for this run after Google blocked them. Don't use Google Scholar; set google_scholar to "blocked".`
   : `Nobody searched Google Scholar for this entry yet. You may open https://scholar.google.com/scholar?hl=en&q="<exact title>" with WebFetch. If it shows a CAPTCHA, an "unusual traffic" page or a google.com/sorry address, stop using Google Scholar and set google_scholar to "blocked". Never try to get around it. A Google Scholar listing is a lead, not a source: count the work's own page it leads you to (publisher, DOI, repository or author page). A [CITATION] item never counts and is never a find. It has no page, and it only shows that other papers cite that title, which happens to invented references too.`
 
 // ---------------------------------------------------------------------------------------
@@ -232,6 +235,7 @@ Where the investigator searched: ${d.searched || '(not stated)'}
 Your search strategy: ${hunt.how}
 
 ${scholarNote(d.key)}
+Never try to get around a CAPTCHA or other bot check on Google Scholar or any other site: if one appears, stop using that site and say so. Don't use the browser tools (mcp__Claude_Browser__*, mcp__claude-in-chrome__*).
 
 Set found to true only if you opened a page showing a real work that is plausibly the one this entry meant to cite (the same work, possibly with garbled details), and give that page's URL. A different paper on a similar topic is not a find.`
 }
@@ -311,7 +315,8 @@ const APPLY_RULES = `- Delete the "% Checked by verify_bib.py" header lines at t
 - decisions with FIXED, FOUND or SUBSTITUTED: replace the whole entry, including the "% [verify_bib]" lines above it, with the decision's bibtex, copied exactly. If its key differs from the original, change the key and nothing else.
 - decisions with KEPT: delete the "% [verify_bib]" lines above the entry.
 - decisions with FABRICATED: replace the "% [verify_bib]" lines with "% FABRICATED: no real source found, see ${DECISIONS_NAME}". Leave the entry in place so the paper still compiles.
-- unresolved, and missing items whose job is "investigate": keep the entry and its "% [verify_bib]" lines, and add "% UNRESOLVED: <one-line reason>, see ${DECISIONS_NAME}" above them.
+- unresolved, and missing items whose job is "investigate": keep the entry and its "% [verify_bib]" lines, and add "% UNRESOLVED: <one-line reason>, see ${DECISIONS_NAME}" above them. If the report marked the entry OK, first put back its original text from the original bibliography in place of the database's version.
+- An entry the report marked OK that is now FABRICATED likewise gets its original text back, under the "% FABRICATED" line.
 - An entry may still carry a "% FABRICATED" or "% UNRESOLVED" line from an earlier run. Replace it rather than adding a second one, and delete it when the entry is now FIXED, FOUND, SUBSTITUTED or KEPT.
 - merges: delete each retired key's entry. In the .tex files, replace each retired key with the survivor inside cite commands only, matching whole keys, and if a command then names the survivor twice, keep one. Citation keys are the only text you may change in .tex files.
 - Don't add new entries. A suggested substitute for a MISMATCH or FABRICATED citation goes in the decisions file, with its BibTeX, for the author to adopt.
@@ -322,7 +327,7 @@ function applyPrompt(r) {
 
 Files:
 - Original bibliography, to be replaced: ${A.bib}
-- Checked copy to edit: ${A.verified}. Confirmed entries already have clean BibTeX. Flagged entries keep their original text under "% [verify_bib]" comment lines.
+- Checked copy to edit: ${A.verified}. Confirmed entries already have clean BibTeX. Flagged entries keep their original text under "% [verify_bib]" comment lines, except entries the report marked OK, which the main session sent for research after Google Scholar disagreed: those hold the database's BibTeX and no comment lines.
 - LaTeX sources: the .tex files under ${A.project}
 - Decisions file to write: ${DECISIONS}
 

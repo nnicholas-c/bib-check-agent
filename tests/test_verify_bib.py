@@ -227,6 +227,19 @@ vb.sparql = real_sparql
 r = emp("ICLR"); r.cands = [rej]
 assert vb.version_conflict(r, {"title": EMP, "author": "Ann Lee", "booktitle": "ICLR", "year": "2027"}) is None
 
+# The report links every entry to an exact-title Google Scholar search, except websites, which are checked through their URL
+rep_path = pathlib.Path(tempfile.mkdtemp()) / "r.report.md"
+paper, site = vb.make_ref("p1", "article", "", {"title": 'A "Quoted" Title', "author": "Ann Lee"}), vb.make_ref("w1", "misc", "", {"title": "PyTorch", "url": "https://pytorch.org"})
+paper.status, site.status = "OK", "WEB"
+vb.write_report(rep_path, [paper, site], {"OK": 1, "CHECK": 0, "NOT FOUND": 0, "WEB": 1, "UNCHECKED": 0}, "r.bib")
+links = rep_path.read_text(encoding="utf-8").split("## Google Scholar links", 1)[1]
+assert "`p1`: https://scholar.google.com/scholar?hl=en&q=%22A++Quoted++Title%22" in links and "w1" not in links, links
+math = vb.make_ref("m", "article", "", {"title": r"Learning with $\epsilon$-greedy Exploration", "author": "Ann Lee"})
+assert "%22" not in vb.scholar_link(math)  # LaTeX math leaves holes, so no exact phrase
+math.best = vb.Cand("Crossref", "Learning with ε-greedy Exploration", ["Ann Lee"])
+math.title = vb.clean_latex(math.fields["title"])
+assert vb.title_sim(math.title, math.best.title) < vb.TITLE_OK or "%22" in vb.scholar_link(math)
+
 # An entry with no comma after its key is still found, so it can be reported as unparseable
 assert [b[2] for b in vb.scan_bib("@article{nokey\n title={X}}\n@misc{ok, title={Y}}") if b[0] == "entry"] == ["nokey", "ok"]
 
