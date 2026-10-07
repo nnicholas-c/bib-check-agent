@@ -1,6 +1,6 @@
 {
   "name": "bib-check-agent",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Find and fix hallucinated, wrong or unsupported citations in LaTeX .bib files, with every fix independently re-checked.",
   "author": { "name": "nnicholas-c" },
   "homepage": "https://github.com/nnicholas-c/bib-check-agent",

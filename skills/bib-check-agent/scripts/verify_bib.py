@@ -122,6 +122,10 @@ VENUES = [
     ("COLM", [r"\bcolm\b", r"conference on language modeling"]),
     ("TMLR", [r"\btmlr\b", r"transactions on machine learning research"]),
     ("JMLR", [r"\bjmlr\b", r"journal of machine learning research"]),
+    ("AISTATS", [r"\baistats\b", r"artificial intelligence and statistics"]),
+    ("UAI", [r"\buai\b", r"uncertainty in artificial intelligence"]),
+    ("COLT", [r"\bcolt\b", r"conference on learning theory"]),
+    ("CoRL", [r"\bcorl\b", r"conference on robot learning"]),
     ("arXiv", [r"\barxiv\b", r"\bcorr\b"]),
 ]
 
@@ -1507,6 +1511,13 @@ def same_venue(a, b):
     return fuzz.token_sort_ratio(" ".join(wa), " ".join(wb)) >= 85
 
 
+def _same_person(a, b):
+    """Loosely the same author: one name's surname is among the other's name parts (Mosquera, Rafael
+    and Rafael Mosquera Gomez; Perez-Nieves and Perez Nieves)."""
+    parts = lambda n: {_key(t) for t in re.split(r"[\s,\-]+", clean_latex(n)) if len(t) > 1}
+    return bool(surname_keys(a) & parts(b) or surname_keys(b) & parts(a))
+
+
 def version_conflict(ref, fields):
     """Why using this BibTeX would change what the entry cites, or lose something it says; None if safe.
     It guards against the two ways a cleanup goes wrong: swapping the cited version for another one
@@ -1519,6 +1530,17 @@ def version_conflict(ref, fields):
     if mine and not (fields.get("journal") or fields.get("booktitle")) and ref.etype in ("article", "inproceedings", "incollection", "inbook", "conference"):
         return f"has no journal or booktitle, which your entry gives ({short(mine, 40)})"
     theirs = clean_latex(fields.get("journal") or fields.get("booktitle") or "")
+    # The same people in another order: databases get this wrong too (dblp swapped two PRISM authors),
+    # and nothing tells which order is right, so the entry is kept.
+    mine_a = [a for a in split_authors(ref.fields.get("author", "")) if a.lower().strip(".") not in ("others", "et al")]
+    theirs_a = split_authors(fields.get("author", ""))
+    if (len(mine_a) >= 2 and len(mine_a) == len(theirs_a) and all(any(_same_person(m, t) for t in theirs_a) for m in mine_a)
+            and not all(_same_person(m, t) for m, t in zip(mine_a, theirs_a))):
+        return "lists the same authors in a different order from your entry; check the order on the paper itself"
+    preprint = venue_code(theirs) == "arXiv" or "10.48550/" in (fields.get("doi") or "").lower() or bool(
+        (fields.get("eprint") or fields.get("archiveprefix")) and not theirs)
+    if mine and venue_code(mine) != "arXiv" and preprint:
+        return f"is the arXiv preprint, not the published version your entry cites ({short(mine, 50)})"
     new_year = to_year(fields.get("year") or fields.get("date"))
     year_moves = bool(ref.year and new_year and abs(new_year - ref.year) >= 2)
     venue_moves = bool(mine and theirs and not same_venue(mine, theirs))

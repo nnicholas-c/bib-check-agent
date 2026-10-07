@@ -123,6 +123,23 @@ wrong_year.cands = [cand("Semantic Scholar", 2016), cand("Crossref", 2016)]
 assert vb.version_conflict(wrong_year, {"title": TITLE, "author": "Kaiming He", "booktitle": "CVPR", "year": "2016"}) is None  # a real fix
 book = vb.make_ref("b", "book", "", {"title": "Deep Learning", "author": "Ian Goodfellow", "publisher": "MIT Press", "year": "2016"})
 assert "no publisher" in vb.version_conflict(book, {"title": "Deep Learning", "author": "Ian Goodfellow", "year": "2016"})
+# A paper cited at a venue is never swapped for its arXiv preprint, whatever the BibTeX source
+uai = vb.make_ref("j", "inproceedings", "", {"title": "Who Guards the Guardians?", "author": "Shruti Joshi",
+                  "booktitle": "Proceedings of the 42nd Conference on Uncertainty in Artificial Intelligence", "year": "2026"})
+assert uai.venue == "UAI" and vb.venue_code("Proceedings of The 26th International Conference on Artificial Intelligence and Statistics") == "AISTATS"
+corr = {"title": "Who Guards the Guardians?", "author": "Shruti Joshi", "journal": "CoRR", "volume": "abs/2602.24278", "year": "2026",
+        "doi": "10.48550/ARXIV.2602.24278"}
+assert "arXiv preprint" in vb.version_conflict(uai, corr)
+arx = vb.make_ref("a", "article", "", {"title": "Skywork-Reward", "author": "Chris Liu", "journal": "arXiv preprint arXiv:2410.18451", "year": "2024"})
+assert vb.version_conflict(arx, dict(corr, title="Skywork-Reward", author="Chris Liu", year="2024")) is None  # an arXiv entry may get arXiv BibTeX
+# A cleanup never reorders authors: dblp lists two PRISM authors swapped, while NeurIPS and arXiv agree with the entry
+prism = vb.make_ref("p", "inproceedings", "", {"title": "The PRISM Alignment Dataset", "booktitle": "Advances in Neural Information Processing Systems",
+                    "author": "Kirk, Hannah Rose and Margatina, Katerina and Ciro, Juan and Mosquera, Rafael and Bartolo, Max", "year": "2024"})
+swapped = {"title": "The PRISM Alignment Dataset", "booktitle": "NeurIPS 2024", "year": "2024",
+           "author": "Hannah Rose Kirk and Katerina Margatina and Rafael Mosquera Gomez and Juan Ciro and Max Bartolo"}
+assert "different order" in vb.version_conflict(prism, swapped)
+assert vb.version_conflict(prism, dict(swapped, author="Hannah Rose Kirk and Katerina Margatina and Juan Ciro and Rafael Mosquera Gomez and Max Bartolo")) is None
+assert vb._same_person("Perez-Nieves, Nicolas", "Nicolas Perez Nieves")
 chapter = vb.make_ref("c", "incollection", "", {"title": "Prospect Theory", "author": "Daniel Kahneman", "booktitle": "Choices, Values, and Frames", "year": "2000"})
 assert "no journal or booktitle" in vb.version_conflict(chapter, {"title": "Prospect Theory", "author": "Daniel Kahneman", "year": "2000"})
 assert "doi" not in vb.tidy("article", {"title": "T", "doi": "10.5555/2627435.2670313"})[1]  # ACM IDs aren't real DOIs

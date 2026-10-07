@@ -4,7 +4,7 @@ description: Checks every entry in a LaTeX .bib file against Semantic Scholar, D
 license: MIT
 compatibility: Needs Python 3 with the packages in scripts/requirements.txt, and outbound HTTPS to api.semanticscholar.org, api.crossref.org, export.arxiv.org, arxiv.org, doi.org, data.crosscite.org and sparql.dblp.org; OpenAlex, Europe PMC, DataCite, Open Library, OpenReview and CORE are used when reachable. Google Scholar needs a browser the user can see. The parallel workflow needs Claude Code; any other agent follows references/procedure.md.
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 allowed-tools: 'Read Edit Write Glob Grep WebSearch WebFetch Workflow Bash(python3 "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(python "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(py -3 "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(uv run "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash("${CLAUDE_SKILL_DIR}/.venv/bin/python" "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash("${CLAUDE_SKILL_DIR}/.venv/Scripts/python.exe" "${CLAUDE_SKILL_DIR}/scripts/verify_bib.py" *) Bash(python3 -m venv "${CLAUDE_SKILL_DIR}/.venv") Bash(python -m venv "${CLAUDE_SKILL_DIR}/.venv") Bash(py -3 -m venv "${CLAUDE_SKILL_DIR}/.venv") Bash("${CLAUDE_SKILL_DIR}/.venv/bin/python" -m pip install -r "${CLAUDE_SKILL_DIR}/scripts/requirements.txt") Bash("${CLAUDE_SKILL_DIR}/.venv/Scripts/python.exe" -m pip install -r "${CLAUDE_SKILL_DIR}/scripts/requirements.txt") Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git ls-files *) Bash(cp *) Bash(latexmk *) Bash(pdflatex *) Bash(xelatex *) Bash(lualatex *) Bash(bibtex *) Bash(biber *)'
 ---
 
